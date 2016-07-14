@@ -15,7 +15,6 @@ from .source import Source
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
     """
-    dummy = False
     config = None       # type: dict
     no_wimp_strength = -10
     max_wimp_strength = 2
@@ -245,9 +244,11 @@ class Model(object):
 
     def interval(self, d, confidence_level=0.9, kind='limit', profile=False):
         """Return an interval of kind and confidence_level on dataset d
-         - d is assumed to be restricted to the analysis range
-         - kind can be 'central' (for a two-sided central CI) or 'limit' (for upper limits)
+         - d is assumed to be restricted to the analysis range.
          - confidence level is the probability content of the interval (1 - the false positive rate)
+         - kind can be 'central' (for a two-sided central CI) or 'limit' (for upper limits)
+         - If profile=True, will compute a profile likelihood interval, i.e. will consider the rate uncertainty on each
+           source.
 
         The interval is set using the likelihood ratio method, assuming the asymptotic distribution (Wilk's theorem)
         for the likelihood ratio test statistic.
