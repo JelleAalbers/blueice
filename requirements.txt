@@ -1,0 +1,7 @@
+# pax, see https://github.com/XENON1T/pax
+wheel>=0.23.0
+numpy>=1.9.0
+matplotlib>=1.3.0
+scipy>=0.15
+tqdm                 # Progress bar library
+multihist>=0.4.1     # Histogram library
