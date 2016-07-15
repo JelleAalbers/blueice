@@ -22,6 +22,7 @@ class Source(object):
 
     events_per_day = 0              # Calculated on init
     pdf_histogram = None            # Histdd, will be set by Model upon initialization.
+    pdf_errors = None               # Histdd, will be set by Model upon initialization.
     energy_distribution = None      # Histdd of rate /kg /keV /day. Will be set by Model upon initialization.
     fraction_in_range = 0           # Fraction of simulated events that fall in analysis space. Set by Model.
 

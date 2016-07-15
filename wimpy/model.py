@@ -85,9 +85,14 @@ class Model(object):
         # This means we have to divide by
         #  - the number of events histogrammed
         #  - the bin sizes (particularly relevant for non-uniform bins!)
-        mh.histogram = mh.histogram.astype(np.float) / mh.n
-        mh.histogram /= np.outer(*[np.diff(self.bins[i]) for i in range(len(self.bins))])
-        source.pdf_histogram = mh
+        source.pdf_histogram = mh.similar_blank_hist()
+        source.pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+        source.pdf_histogram.histogram /= np.outer(*[np.diff(self.bins[i]) for i in range(len(self.bins))])
+
+        # Estimate the MC statistical error. Not used for anything, but good to inspect.
+        source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
+        source.pdf_errors[source.pdf_errors == 0] = float('nan')
+
 
     def range_cut(self, d):
         """Return events from dataset d which are in the analysis space"""
