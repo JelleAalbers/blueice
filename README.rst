@@ -33,7 +33,7 @@ The statistical model used is very similar to the "Bologna model" (unbinned like
 
 Installation
 ============
-Make sure you have pax installe -- we need it for the common unit system and XENON1T.ini.
+Make sure you have pax installed -- we need it for the common unit system and XENON1T.ini.
 
 Then run `python setup.py develop` or `python setup.py install`
 
