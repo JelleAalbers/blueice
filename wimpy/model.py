@@ -20,10 +20,10 @@ class Model(object):
     max_wimp_strength = 2
     exposure_factor = 1  # Increase this to quickly change the exposure of the model
 
-    def __init__(self, config, ipyparallel_view=None, **kwargs):
+    def __init__(self, config, ipp_client=None, **kwargs):
         """
         :param config: Dictionary specifying detector parameters, source info, etc.
-        :param ipyparallel_view: DirectView object to use for parallelizing pdf computation (optional)
+        :param ipp_client: ipyparallel client to use for parallelizing pdf computation (optional)
         :param kwargs: Overrides for the config (optional)
         :return:
         """
@@ -41,41 +41,51 @@ class Model(object):
             # Has the PDF in the analysis space already been provided in the spec?
             # Usually not, do so now.
             if source.pdf_histogram is None or c['force_pdf_recalculation']:
-                self.compute_source_pdf(source, ipyparallel_view=ipyparallel_view)
+                self.compute_source_pdf(source, ipp_client=ipp_client)
             self.sources.append(source)
 
-    def compute_source_pdf(self, source, ipyparallel_view=None):
+    def compute_source_pdf(self, source, ipp_client=None):
         """Computes the PDF for the source. Returns nothing but modifies source.
         """
         # Not a method of source, since it needs analysis space definition...
         # To be honest I'm not sure where this method (and source.simulate) actually would fit best.
 
-        # Simulate batches of 1e6 events at a time (to avoid memory errors and show a meaningful progressbar)
-        n_events = source.n_events_for_pdf
+        # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)
+        # Number of events to simulate will be rounded up to the nearest batch size
         batch_size = self.config['pdf_sampling_batch_size']
-        n_events = int(batch_size * (int(n_events / batch_size) + 1))
+        n_batches = int(source.n_events_for_pdf // batch_size + 1)
+        n_events = n_batches * batch_size
         mh = Histdd(bins=self.bins)
 
-        # Standalone counterpart of Model.to_space, needed for parallel simulation. Ugly!!
-        def to_space(d, dims):
-            return [d[dims[i]] for i in range(len(dims))]
+        if ipp_client is not None:
+            # We need both a directview and a load-balanced view: the latter doesn't have methods like push.
+            directview = ipp_client[:]
+            lbview = ipp_client.load_balanced_view()
+        
+            # Get the necessary objects to the engines
+            # For some reason you can't directly .push(dict(bins=self.bins)),
+            # it will fail with 'bins' is not defined error. When you first assign bins = self.bins it works.
+            bins = self.bins
+            dims = self.dims
+            
+            def to_space(d):
+                """Standalone counterpart of Model.to_space, needed for parallel simulation. Ugly!!"""
+                return [d[dims[i]] for i in range(len(dims))]
+                
+            def do_sim(_):
+                """Run one simulation batch and histogram it immediately (so we don't pass gobs of data around)"""
+                return Histdd(*to_space(source.simulate(batch_size)), bins=bins).histogram
 
-        if ipyparallel_view is not None:
-            # Get the necessary objects to the nodes
-            ipyparallel_view.push(dict(source=source, bins=self.bins, batch_size=batch_size, to_space=to_space),
+            directview.push(dict(source=source, bins=bins, dims=dims, batch_size=batch_size, to_space=to_space),
                                   block=True)
-
-            # Run small simulations on each node. Histogram immediately so we don't have to pass gobs of data around.
-            # Make a copy of the histogram first, so we don't have to
-            def do_sim(dims):
-                return Histdd(*to_space(source.simulate(batch_size), dims),
-                              bins=bins)
-
-            for q in ipyparallel_view.map_sync(do_sim, [self.dims for _ in range(int(n_events / batch_size))]):
-                mh.histogram += q.histogram
+                
+            amap_result = lbview.map(do_sim, [None for _ in range(n_batches)], ordered=False, 
+                                     block=self.config.get('block_during_simulation', False))
+            for r in tqdm(amap_result, total=n_batches, desc='Sampling PDF of %s' % source.name):
+                mh.histogram += r
 
         else:
-            for _ in tqdm(range(int(n_events / batch_size)),
+            for _ in tqdm(range(n_batches),
                           desc='Sampling PDF of %s' % source.name):
                 mh.add(*self.to_space(source.simulate(batch_size)))
 
@@ -85,9 +95,14 @@ class Model(object):
         # This means we have to divide by
         #  - the number of events histogrammed
         #  - the bin sizes (particularly relevant for non-uniform bins!)
-        mh.histogram = mh.histogram.astype(np.float) / mh.n
-        mh.histogram /= np.outer(*[np.diff(self.bins[i]) for i in range(len(self.bins))])
-        source.pdf_histogram = mh
+        source.pdf_histogram = mh.similar_blank_hist()
+        source.pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+        source.pdf_histogram.histogram /= np.outer(*[np.diff(self.bins[i]) for i in range(len(self.bins))])
+
+        # Estimate the MC statistical error. Not used for anything, but good to inspect.
+        source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
+        source.pdf_errors[source.pdf_errors == 0] = float('nan')
+
 
     def range_cut(self, d):
         """Return events from dataset d which are in the analysis space"""
