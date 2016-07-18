@@ -25,6 +25,7 @@ class Source(object):
     pdf_errors = None               # Histdd, will be set by Model upon initialization.
     energy_distribution = None      # Histdd of rate /kg /keV /day. Will be set by Model upon initialization.
     fraction_in_range = 0           # Fraction of simulated events that fall in analysis space. Set by Model.
+    analysis_target = False
 
     def __init__(self, config, spec):
         """
@@ -86,12 +87,15 @@ class Source(object):
                                       ('x', np.float),
                                       ('y', np.float),
                                       ('z', np.float),
+                                      ('p_photon_detected', np.float),
+                                      ('p_electron_detected', np.float),
                                       ('electrons_produced', np.int),
                                       ('photons_produced', np.int),
                                       ('electrons_detected', np.int),
-                                      ('photons_detected', np.int),
-                                      ('p_photon_detected', np.float),
-                                      ('p_electron_detected', np.float),
+                                      ('s1_photons_detected', np.int),
+                                      ('s2_photons_detected', np.int),
+                                      ('s1_photoelectrons_produced', np.int),
+                                      ('s2_photoelectrons_produced', np.int),
                                       ('s1', np.float),
                                       ('s2', np.float),
                                       ('cs1', np.float),
@@ -153,20 +157,29 @@ class Source(object):
         d['photons_produced'] = np.random.binomial(n_quanta, p_becomes_photon)
         d['electrons_produced'] = n_quanta - d['photons_produced']
 
+        # "Remove" bad events (see above); actual removal happens at the very end of the function
         d['photons_produced'][bad_events] = 0
         d['electrons_produced'][bad_events] = 0
 
-        d['photons_detected'] = np.random.binomial(d['photons_produced'], d['p_photon_detected'])
+        # Detection efficiency
+        d['s1_photons_detected'] = np.random.binomial(d['photons_produced'], d['p_photon_detected'])
         d['electrons_detected'] = np.random.binomial(d['electrons_produced'], d['p_electron_detected'])
 
-        # Get the number of pe detected in S1 and S2
-        def get_pmt_response(n_photons_seen):
-            return np.random.normal(n_photons_seen,
-                                    np.clip(0.5 * np.sqrt(n_photons_seen),
-                                            1e-9,
-                                            float('inf')))
-        d['s1'] = get_pmt_response(d['photons_detected'])
-        d['s2'] = get_pmt_response(np.random.poisson(d['electrons_detected'] * c['s2_gain']))
+        # S2 amplification
+        d['s2_photons_detected'] = np.random.poisson(d['electrons_detected'] * c['s2_gain'])
+
+        # PMT response
+        for si in ('s1', 's2'):
+            # Convert photons to photoelectrons, taking double photoelectron emission into account
+            d[si + '_photoelectrons_produced'] = d[si + '_photons_detected'] + \
+                                                   np.random.binomial(d[si + '_photons_detected'],
+                                                                      c['double_pe_emission_probability'])
+
+            # Convert photoelectrons (in reality) to measured pe
+            d[si] = np.random.normal(d[si + '_photoelectrons_produced'],
+                                     np.clip(c['pmt_gain_width'] * np.sqrt(d[si + '_photoelectrons_produced']),
+                                             1e-9,   # Normal freaks out if sigma is 0...
+                                             float('inf')))
 
         # Get the corrected S1 and S2, assuming our posrec + correction map is perfect
         # Note these definitions don't just correct, they also scale back to the number of quanta!
@@ -175,12 +188,12 @@ class Source(object):
 
         # Assuming we know the total number of photons detected (perfect hit counting),
         # give the ML estimate of the number of photons produced.
-        d['magic_cs1'] = d['photons_detected'] / d['p_photon_detected']
+        d['magic_cs1'] = d['s1_photons_detected'] / d['p_photon_detected']
 
         # Remove events without an S1 or S1
         if self.config['require_s1']:
             # One photons detected doesn't count as an S1 (since it isn't distinguishable from a dark count)
-            d = d[d['photons_detected'] >= 2]
+            d = d[d['s1_photons_detected'] >= 2]
 
         if self.config['require_s2']:
             d = d[d['electrons_detected'] >= 1]

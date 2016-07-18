@@ -12,13 +12,26 @@ from multihist import Histdd
 from .source import Source
 
 
+# Features I would like to add:
+#  - Special treatment of uniform spatial distribution: don't store samples for each source...
+#  - Factor limit setting out to a new file / class?
+#  - Non-asymptotic limit setting
+#  - General (shape) uncertainties
+#  - Fit parameters other than source strength
+
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
+
+    dormant sources have their pdf computed on initialization, but are not considered in fitting.
+    Use activate_source(source_id) and deactivate_source(source_id) to swap sources between dormant and active.
+    Only one active source can be analysis target, if you activate a new one the previous one is automatically
+    deactivated. The source which is the analysis target is always last in the source list.
     """
-    config = None       # type: dict
+    config = None            # type: dict
     no_wimp_strength = -10
-    max_wimp_strength = 2
-    exposure_factor = 1  # Increase this to quickly change the exposure of the model
+    max_wimp_strength = 4
+    exposure_factor = 1      # Increase this to quickly change the exposure of the model
+    source_to_fit = -1       # Index of the source whose rate we want to constrain
 
     def __init__(self, config, ipp_client=None, **kwargs):
         """
@@ -34,18 +47,25 @@ class Model(object):
         self.dims = list(self.space.keys())
         self.bins = list(self.space.values())
 
-        self.sources = []
-        for source_spec in tqdm(c['sources'], desc='Initializing sources'):
+        self.sources = self._init_sources(c['sources'], ipp_client=ipp_client)
+        self.dormant_sources = self._init_sources(c['dormant_sources'], ipp_client=ipp_client)
+
+    def _init_sources(self, source_specs, ipp_client=None):
+        result = []
+        for source_spec in source_specs:
             source = Source(self.config, source_spec)
 
             # Has the PDF in the analysis space already been provided in the spec?
-            # Usually not, do so now.
+            # Usually not: do so now.
             if source.pdf_histogram is None or c['force_pdf_recalculation']:
                 self.compute_source_pdf(source, ipp_client=ipp_client)
-            self.sources.append(source)
+            result.append(source)
+        return result
 
     def compute_source_pdf(self, source, ipp_client=None):
-        """Computes the PDF for the source. Returns nothing but modifies source.
+        """Computes the PDF of the source in the analysis space.
+        Returns nothing, modifies source in-place.
+        :param ipp_client: ipyparallel client to use for parallelizing pdf computation (optional)
         """
         # Not a method of source, since it needs analysis space definition...
         # To be honest I'm not sure where this method (and source.simulate) actually would fit best.
@@ -61,25 +81,25 @@ class Model(object):
             # We need both a directview and a load-balanced view: the latter doesn't have methods like push.
             directview = ipp_client[:]
             lbview = ipp_client.load_balanced_view()
-        
+
             # Get the necessary objects to the engines
             # For some reason you can't directly .push(dict(bins=self.bins)),
             # it will fail with 'bins' is not defined error. When you first assign bins = self.bins it works.
             bins = self.bins
             dims = self.dims
-            
+
             def to_space(d):
                 """Standalone counterpart of Model.to_space, needed for parallel simulation. Ugly!!"""
                 return [d[dims[i]] for i in range(len(dims))]
-                
+
             def do_sim(_):
                 """Run one simulation batch and histogram it immediately (so we don't pass gobs of data around)"""
                 return Histdd(*to_space(source.simulate(batch_size)), bins=bins).histogram
 
             directview.push(dict(source=source, bins=bins, dims=dims, batch_size=batch_size, to_space=to_space),
                                   block=True)
-                
-            amap_result = lbview.map(do_sim, [None for _ in range(n_batches)], ordered=False, 
+
+            amap_result = lbview.map(do_sim, [None for _ in range(n_batches)], ordered=False,
                                      block=self.config.get('block_during_simulation', False))
             for r in tqdm(amap_result, total=n_batches, desc='Sampling PDF of %s' % source.name):
                 mh.histogram += r
@@ -103,12 +123,41 @@ class Model(object):
         source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
         source.pdf_errors[source.pdf_errors == 0] = float('nan')
 
+    def activate_source(self, source_id):
+        """Activates the source named source_id from the list of dormant sources."""
+        dormant_source_i = self.get_source_i(source_id, from_dormant=True)
+        s = self.dormant_sources[dormant_source_i]
+        if s.analysis_target:
+            # Insert the new analysis target at the end of the list
+            self.deactivate_source(-1, force=True)
+            self.sources.append(s)
+        else:
+            self.sources = self.sources[:-1] + [s] + self.sources[-1]
+        del self.dormant_sources[dormant_source_i]
 
-    def range_cut(self, d):
-        """Return events from dataset d which are in the analysis space"""
+    def deactivate_source(self, source_id, force=False):
+        """Deactivates the source named source_id"""
+        source_i = self.get_source_i(source_id)
+        s = self.sources[source_i]
+        if not force and s.analysis_target:
+            raise ValueError("Cannot deactivate the analysis target: please activate a new one instead.")
+        self.dormant_sources.append(s)
+        del self.sources[source_i]
+
+    def range_cut(self, d, ps=None):
+        """Return events from dataset d which are in the analysis space
+        Also removes events for which all of the source PDF's are zero (which cannot be meaningfully interpreted)
+        """
         mask = np.ones(len(d), dtype=np.bool)
         for dimension, bin_edges in self.space.items():
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
+
+        # Ignore events to which no source pdf assigns a positive probability.
+        # These would cause log(sum_sources (mu * p)) in the loglikelihood to become -inf.
+        if ps is None:
+            ps = self.score_events(d)
+        mask &= ps.sum(axis=0) != 0
+
         return d[mask]
 
     def simulate(self, wimp_strength=0, restrict=True):
@@ -156,24 +205,21 @@ class Model(object):
 
     def score_events(self, d):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
-        # TODO: Handle outliers in a better way than just putting loglikelihood = -20...
-        # In particular, you need to handle events which are outside any source pdf, they are now considered
-        # equally likely to be signal or background!
-        return np.array([np.clip(s.pdf(*self.to_space(d)),
-                                 1e-20,
-                                 float('inf')) for s in self.sources])
+        return np.vstack([s.pdf(*self.to_space(d)) for s in self.sources])
 
-    def get_source_i(self, source_id):
+    def get_source_i(self, source_id, from_dormant=False):
         if isinstance(source_id, (int, float)):
             return int(source_id)
         else:
-            for s_i, s in enumerate(self.sources):
+            for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
                 if source_id in s.name:
                     break
+            else:
+                raise ValueError("Unknown source %s" % source_id)
             return s_i
 
     def loglikelihood(self, d, wimp_strength, ps=None, rate_modifiers=None):
-        """Gives the loglikelihood of the dataset d
+        """Gives the log-likelihood of the dataset d
         under the hypothesis that the source source_id's rate is multiplied by 10**strength.
         rate_modifiers: array of rate adjustments for each source.
                         Rate will be increaed by source.rate * source.rate_uncertainty * rate_modifier events/day,
