@@ -37,7 +37,7 @@ wimp_sources = [dict(energy_distribution=make_e_hist(wimp_recoil_spectrum(es,
 # From figure 5, right of the MC paper
 # The ER background doesn't need to be computed to very high energy, since they generate way more quanta / energy
 # so only the low-energy ER background interferes with WIMP searches
-n_e_er = int(len(energy_bins) * 0.1)
+n_e_er = int(len(energy_bins) * 0.15)
 er_bg = make_e_hist(np.ones(n_e_er - 1) * 2e-4, energy_bins[:n_e_er])
 
 # NR background

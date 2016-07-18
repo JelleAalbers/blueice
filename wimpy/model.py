@@ -13,6 +13,7 @@ from .source import Source
 
 
 # Features I would like to add:
+#  - Special treatment of uniform spatial distribution: don't store samples for each source...
 #  - Factor limit setting out to a new file / class?
 #  - Non-asymptotic limit setting
 #  - General (shape) uncertainties
