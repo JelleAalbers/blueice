@@ -166,12 +166,12 @@ class Source(object):
         d['electrons_detected'] = np.random.binomial(d['electrons_produced'], d['p_electron_detected'])
 
         # S2 amplification
-        d['s2_photons_detected'] = np.random.binomial(d['electrons_produced'], d['p_electron_detected'])
+        d['s2_photons_detected'] = np.random.poisson(d['electrons_detected'] * c['s2_gain'])
 
         # PMT response
         for si in ('s1', 's2'):
             # Convert photons to photoelectrons, taking double photoelectron emission into account
-            d[si + '_photoelectrons_produced'] = d[si + 'photons_detected'] + \
+            d[si + '_photoelectrons_produced'] = d[si + '_photons_detected'] + \
                                                    np.random.binomial(d[si + '_photons_detected'],
                                                                       c['double_pe_emission_probability'])
 
@@ -188,12 +188,12 @@ class Source(object):
 
         # Assuming we know the total number of photons detected (perfect hit counting),
         # give the ML estimate of the number of photons produced.
-        d['magic_cs1'] = d['photons_detected'] / d['p_photon_detected']
+        d['magic_cs1'] = d['s1_photons_detected'] / d['p_photon_detected']
 
         # Remove events without an S1 or S1
         if self.config['require_s1']:
             # One photons detected doesn't count as an S1 (since it isn't distinguishable from a dark count)
-            d = d[d['photons_detected'] >= 2]
+            d = d[d['s1_photons_detected'] >= 2]
 
         if self.config['require_s2']:
             d = d[d['electrons_detected'] >= 1]

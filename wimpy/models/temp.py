@@ -12,7 +12,7 @@ from pax.configuration import load_configuration
 pax_config = load_configuration('XENON1T')
 
 energy_bins = np.linspace(1e-7, 100, 10000)      # Bin edges of energies to consider
-def make_e_hist(rates):
+def make_e_hist(rates, energy_bins=energy_bins):
     assert len(rates) == len(energy_bins) - 1    # Bin centers stuff...
     h = Hist1d(bins=energy_bins)
     h.histogram = rates
@@ -35,7 +35,10 @@ wimp_sources = [dict(energy_distribution=make_e_hist(wimp_recoil_spectrum(es,
 
 # Uniform ER Background at 2e-4 /day/kg/keV
 # From figure 5, right of the MC paper
-er_bg = make_e_hist(np.ones(len(es)) * 2e-4)
+# The ER background doesn't need to be computed to very high energy, since they generate way more quanta / energy
+# so only the low-energy ER background interferes with WIMP searches
+n_e_er = int(len(energy_bins) * 0.1)
+er_bg = make_e_hist(np.ones(n_e_er - 1) * 2e-4, energy_bins[:n_e_er])
 
 # NR background
 # Roughtly curve-traced from fig 8 of the MC paper,
@@ -67,13 +70,11 @@ backgrounds = [
      'label': 'Radiogenic neutrons'},
 ]
 
-sources = backgrounds + wimp_sources[0]
-
 config=dict(
     # Basic model info
-    analysis_space=[('cs1', np.linspace(0, 400, 100)),
-                    ('cs2',  np.linspace(0, 200, 100))],
-    sources=sources,
+    analysis_space=[('cs1', np.linspace(0, 500, 100)),
+                    ('cs2',  np.linspace(0, 300, 100))],
+    sources=backgrounds + [wimp_sources[0]],
     dormant_sources=wimp_sources[1:],
     livetime_days=2*365.25,
     require_s1 = True,
@@ -89,7 +90,7 @@ config=dict(
     ph_detection_efficiency=0.118,
     drift_field = 500 * units.V / units.cm,
     pmt_gain_width=0.5,    # Width (in photoelectrons) of the single-photoelectron area spectrum
-    double_pe_emission_probability=0.12,   # Probability for a photon detected by the PMT to emit two photoelectrons.
+    double_pe_emission_probability=0.12,   # Probability for a photon detected by a PMT to produce two photoelectrons.
 
     # For sampling of light and charge yield in space
     n_location_samples = int(1e5),          # Number of samples to take for the source positions (for light yield etc, temporary?)

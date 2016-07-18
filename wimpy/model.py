@@ -13,8 +13,10 @@ from .source import Source
 
 
 # Features I would like to add:
+#  - Factor limit setting out to a new file / class?
+#  - Non-asymptotic limit setting
 #  - General (shape) uncertainties
-#  - Fit parameters other than source strength (maybe for another package? maybe decouple fitting from Model?)
+#  - Fit parameters other than source strength
 
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
@@ -44,19 +46,25 @@ class Model(object):
         self.dims = list(self.space.keys())
         self.bins = list(self.space.values())
 
-        self.sources = []
-        self.dormant_sources = []
-        for source_spec in tqdm(c['sources'] + c['dormant_sources'], desc='Initializing sources'):
+        self.sources = self._init_sources(c['sources'], ipp_client=ipp_client)
+        self.dormant_sources = self._init_sources(c['dormant_sources'], ipp_client=ipp_client)
+
+    def _init_sources(self, source_specs, ipp_client=None):
+        result = []
+        for source_spec in source_specs:
             source = Source(self.config, source_spec)
 
             # Has the PDF in the analysis space already been provided in the spec?
             # Usually not: do so now.
             if source.pdf_histogram is None or c['force_pdf_recalculation']:
                 self.compute_source_pdf(source, ipp_client=ipp_client)
-            self.sources.append(source)
+            result.append(source)
+        return result
 
     def compute_source_pdf(self, source, ipp_client=None):
-        """Computes the PDF for the source. Returns nothing but modifies source.
+        """Computes the PDF of the source in the analysis space.
+        Returns nothing, modifies source in-place.
+        :param ipp_client: ipyparallel client to use for parallelizing pdf computation (optional)
         """
         # Not a method of source, since it needs analysis space definition...
         # To be honest I'm not sure where this method (and source.simulate) actually would fit best.
@@ -72,25 +80,25 @@ class Model(object):
             # We need both a directview and a load-balanced view: the latter doesn't have methods like push.
             directview = ipp_client[:]
             lbview = ipp_client.load_balanced_view()
-        
+
             # Get the necessary objects to the engines
             # For some reason you can't directly .push(dict(bins=self.bins)),
             # it will fail with 'bins' is not defined error. When you first assign bins = self.bins it works.
             bins = self.bins
             dims = self.dims
-            
+
             def to_space(d):
                 """Standalone counterpart of Model.to_space, needed for parallel simulation. Ugly!!"""
                 return [d[dims[i]] for i in range(len(dims))]
-                
+
             def do_sim(_):
                 """Run one simulation batch and histogram it immediately (so we don't pass gobs of data around)"""
                 return Histdd(*to_space(source.simulate(batch_size)), bins=bins).histogram
 
             directview.push(dict(source=source, bins=bins, dims=dims, batch_size=batch_size, to_space=to_space),
                                   block=True)
-                
-            amap_result = lbview.map(do_sim, [None for _ in range(n_batches)], ordered=False, 
+
+            amap_result = lbview.map(do_sim, [None for _ in range(n_batches)], ordered=False,
                                      block=self.config.get('block_during_simulation', False))
             for r in tqdm(amap_result, total=n_batches, desc='Sampling PDF of %s' % source.name):
                 mh.histogram += r
@@ -199,7 +207,7 @@ class Model(object):
         return np.vstack([s.pdf(*self.to_space(d)) for s in self.sources])
 
     def get_source_i(self, source_id, from_dormant=False):
-        if ininstance(source_id, (int, float)):
+        if isinstance(source_id, (int, float)):
             return int(source_id)
         else:
             for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
