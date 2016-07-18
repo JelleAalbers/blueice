@@ -23,9 +23,15 @@ es = Hist1d(bins=energy_bins).bin_centers        # Centers of the energy bins de
 reference_wimp_cross_section = 1e-45
 wimp_mass = 50
 from wimpy.wimps import wimp_recoil_spectrum
-wimp_hist = make_e_hist(wimp_recoil_spectrum(es,
-                                             mass=wimp_mass,
-                                             sigma=reference_wimp_cross_section))
+wimp_sources = [dict(energy_distribution=make_e_hist(wimp_recoil_spectrum(es,
+                                                                          mass=wimp_mass,
+                                                                          sigma=reference_wimp_cross_section)),
+                     color='red',
+                     name='wimp_%dgev' % wimp_mass,
+                     n_events_for_pdf=5e6,
+                     analysis_target=True,
+                     recoil_type='nr',
+                     label='%d GeV WIMP' % wimp_mass) for wimp_mass in [50, 6, 10, 20, 100, 1000]]
 
 # Uniform ER Background at 2e-4 /day/kg/keV
 # From figure 5, right of the MC paper
@@ -61,21 +67,14 @@ backgrounds = [
      'label': 'Radiogenic neutrons'},
 ]
 
-sources = backgrounds + [
-    {'energy_distribution': wimp_hist,
-     'color': 'red',
-     'name': 'wimp',
-     'recoil_type': 'nr',
-     'n_events_for_pdf': 5e6,
-     'label': '%d GeV WIMP' % wimp_mass
-    }
-]
+sources = backgrounds + wimp_sources[0]
 
 config=dict(
     # Basic model info
     analysis_space=[('cs1', np.linspace(0, 400, 100)),
                     ('cs2',  np.linspace(0, 200, 100))],
     sources=sources,
+    dormant_sources=wimp_sources[1:],
     livetime_days=2*365.25,
     require_s1 = True,
     require_s2 = True,
@@ -89,6 +88,8 @@ config=dict(
     s2_gain=26,
     ph_detection_efficiency=0.118,
     drift_field = 500 * units.V / units.cm,
+    pmt_gain_width=0.5,    # Width (in photoelectrons) of the single-photoelectron area spectrum
+    double_pe_emission_probability=0.12,   # Probability for a photon detected by the PMT to emit two photoelectrons.
 
     # For sampling of light and charge yield in space
     n_location_samples = int(1e5),          # Number of samples to take for the source positions (for light yield etc, temporary?)

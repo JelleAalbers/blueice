@@ -12,13 +12,23 @@ from multihist import Histdd
 from .source import Source
 
 
+# Features I would like to add:
+#  - General (shape) uncertainties
+#  - Fit parameters other than source strength (maybe for another package? maybe decouple fitting from Model?)
+
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
+
+    dormant sources have their pdf computed on initialization, but are not considered in fitting.
+    Use activate_source(source_id) and deactivate_source(source_id) to swap sources between dormant and active.
+    Only one active source can be analysis target, if you activate a new one the previous one is automatically
+    deactivated. The source which is the analysis target is always last in the source list.
     """
-    config = None       # type: dict
+    config = None            # type: dict
     no_wimp_strength = -10
-    max_wimp_strength = 2
-    exposure_factor = 1  # Increase this to quickly change the exposure of the model
+    max_wimp_strength = 4
+    exposure_factor = 1      # Increase this to quickly change the exposure of the model
+    source_to_fit = -1       # Index of the source whose rate we want to constrain
 
     def __init__(self, config, ipp_client=None, **kwargs):
         """
@@ -35,11 +45,12 @@ class Model(object):
         self.bins = list(self.space.values())
 
         self.sources = []
-        for source_spec in tqdm(c['sources'], desc='Initializing sources'):
+        self.dormant_sources = []
+        for source_spec in tqdm(c['sources'] + c['dormant_sources'], desc='Initializing sources'):
             source = Source(self.config, source_spec)
 
             # Has the PDF in the analysis space already been provided in the spec?
-            # Usually not, do so now.
+            # Usually not: do so now.
             if source.pdf_histogram is None or c['force_pdf_recalculation']:
                 self.compute_source_pdf(source, ipp_client=ipp_client)
             self.sources.append(source)
@@ -103,12 +114,41 @@ class Model(object):
         source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
         source.pdf_errors[source.pdf_errors == 0] = float('nan')
 
+    def activate_source(self, source_id):
+        """Activates the source named source_id from the list of dormant sources."""
+        dormant_source_i = self.get_source_i(source_id, from_dormant=True)
+        s = self.dormant_sources[dormant_source_i]
+        if s.analysis_target:
+            # Insert the new analysis target at the end of the list
+            self.deactivate_source(-1, force=True)
+            self.sources.append(s)
+        else:
+            self.sources = self.sources[:-1] + [s] + self.sources[-1]
+        del self.dormant_sources[dormant_source_i]
 
-    def range_cut(self, d):
-        """Return events from dataset d which are in the analysis space"""
+    def deactivate_source(self, source_id, force=False):
+        """Deactivates the source named source_id"""
+        source_i = self.get_source_i(source_id)
+        s = self.sources[source_i]
+        if not force and s.analysis_target:
+            raise ValueError("Cannot deactivate the analysis target: please activate a new one instead.")
+        self.dormant_sources.append(s)
+        del self.sources[source_i]
+
+    def range_cut(self, d, ps=None):
+        """Return events from dataset d which are in the analysis space
+        Also removes events for which all of the source PDF's are zero (which cannot be meaningfully interpreted)
+        """
         mask = np.ones(len(d), dtype=np.bool)
         for dimension, bin_edges in self.space.items():
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
+
+        # Ignore events to which no source pdf assigns a positive probability.
+        # These would cause log(sum_sources (mu * p)) in the loglikelihood to become -inf.
+        if ps is None:
+            ps = self.score_events(d)
+        mask &= ps.sum(axis=0) != 0
+
         return d[mask]
 
     def simulate(self, wimp_strength=0, restrict=True):
@@ -156,22 +196,21 @@ class Model(object):
 
     def score_events(self, d):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
-        # TODO: Handle outliers in a better way than just putting loglikelihood = -20...
-        return np.array([np.clip(s.pdf(*self.to_space(d)),
-                                 1e-20,
-                                 float('inf')) for s in self.sources])
+        return np.vstack([s.pdf(*self.to_space(d)) for s in self.sources])
 
-    def get_source_i(self, source_id):
+    def get_source_i(self, source_id, from_dormant=False):
         if ininstance(source_id, (int, float)):
             return int(source_id)
         else:
-            for s_i, s in enumerate(self.sources):
+            for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
                 if source_id in s.name:
                     break
+            else:
+                raise ValueError("Unknown source %s" % source_id)
             return s_i
 
     def loglikelihood(self, d, wimp_strength, ps=None, rate_modifiers=None):
-        """Gives the loglikelihood of the dataset d
+        """Gives the log-likelihood of the dataset d
         under the hypothesis that the source source_id's rate is multiplied by 10**strength.
         rate_modifiers: array of rate adjustments for each source.
                         Rate will be increaed by source.rate * source.rate_uncertainty * rate_modifier events/day,
