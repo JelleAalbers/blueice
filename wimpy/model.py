@@ -53,7 +53,7 @@ class Model(object):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)
         # Number of events to simulate will be rounded up to the nearest batch size
         batch_size = self.config['pdf_sampling_batch_size']
-        n_batches = int(source.n_events_for_pdf // batch_size + 1)
+        n_batches = int((source.n_events_for_pdf * self.config['pdf_sampling_multiplier']) // batch_size + 1)
         n_events = n_batches * batch_size
         mh = Histdd(bins=self.bins)
 
@@ -157,12 +157,14 @@ class Model(object):
     def score_events(self, d):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
         # TODO: Handle outliers in a better way than just putting loglikelihood = -20...
+        # In particular, you need to handle events which are outside any source pdf, they are now considered
+        # equally likely to be signal or background!
         return np.array([np.clip(s.pdf(*self.to_space(d)),
                                  1e-20,
                                  float('inf')) for s in self.sources])
 
     def get_source_i(self, source_id):
-        if ininstance(source_id, (int, float)):
+        if isinstance(source_id, (int, float)):
             return int(source_id)
         else:
             for s_i, s in enumerate(self.sources):
