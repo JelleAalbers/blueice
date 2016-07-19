@@ -231,21 +231,6 @@ class Model(object):
             return np.array([self.expected_events(s) for s in self.sources])
         return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * self.exposure_factor
 
-    def loglikelihood(self, d, mu=None, ps=None):
-        """Return the log-likelihood of the dataset d under the model,
-        mu: array of n_sources, expected number of events for each source.
-        """
-        # TODO: this function should no longer exist!
-        if ps is None:
-            ps = self.score_events(d)
-        if mu is None:
-            mu = np.array([self.expected_events(s) for s in m.sources])
-
-        # Return the extended log likelihood (without tedious normalization constant that anyway drops out of
-        # likelihood ratio computations).
-        return utils.extended_maximum_likelihood(mu, ps)
-        return result
-
     # Utility methods
     @staticmethod
     def load(filename):
