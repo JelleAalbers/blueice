@@ -81,6 +81,9 @@ config=dict(
     require_s2 = True,
     force_pdf_recalculation = False,
     pdf_sampling_batch_size = int(1e6),
+    # Thresholds on uncorrected S1/S2 for comparison with the Bologna moddel at low WIMP masses
+    s1_area_threshold = 3,
+    s2_area_threshold = 150,
 
     # Detector parameters
     fiducial_mass = 1000, #kg. np.pi * rmax**2 * (zmax - zmin) * density?

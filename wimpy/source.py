@@ -194,8 +194,10 @@ class Source(object):
         if self.config['require_s1']:
             # One photons detected doesn't count as an S1 (since it isn't distinguishable from a dark count)
             d = d[d['s1_photons_detected'] >= 2]
+            d = d[d['s1'] > c['s1_area_threshold']]
 
         if self.config['require_s2']:
             d = d[d['electrons_detected'] >= 1]
+            d = d[d['s2'] > c['s2_area_threshold']]
 
         return d
