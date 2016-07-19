@@ -81,7 +81,7 @@ config=dict(
     require_s2 = True,
     force_pdf_recalculation = False,
     pdf_sampling_batch_size = int(1e6),
-    # Thresholds on uncorrected S1/S2 for comparison with the Bologna moddel at low WIMP masses
+    # Thresholds on uncorrected S1/S2: for comparison with the Bologna model at low WIMP masses
     s1_area_threshold = 3,
     s2_area_threshold = 150,
 
@@ -101,7 +101,7 @@ config=dict(
     # Note z is negative, so the maximum z is actually the z of the top boundary of the fiducial volume
     ficudial_volume_zmax = - 0.05 * pax_config['DEFAULT']['tpc_length'],
     ficudial_volume_zmin = - 0.95 * pax_config['DEFAULT']['tpc_length'],
-    s1_relative_ly_map_filename = pax_config['WaveformSimulator']['s1_light_yield_map'],
+    s1_relative_ly_map = 's1_rel_ly_pax5.1.pklz',       # Will be replaced by the Histdd(r2, z) in this pickle file
 
     # S1/S2 generation parameters
     nr_electron_yield_cutoff_energy = 1,  # keV.

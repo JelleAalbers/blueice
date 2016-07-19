@@ -10,7 +10,7 @@ from . import yields
 
 
 class Source(object):
-    """A source of events in the WIMP analysis
+    """A source of events in the detector. Takes care of simulating events.
     """
     name = 'unspecified'
     label = 'Catastrophic irreducible noise'
@@ -20,11 +20,11 @@ class Source(object):
     rate_uncertainty = 0
     spatial_distribution = 'uniform'
 
-    events_per_day = 0              # Calculated on init
+    energy_distribution = None      # Histdd of rate /kg /keV /day.
+    events_per_day = 0              # Calculated on init.
     pdf_histogram = None            # Histdd, will be set by Model upon initialization.
     pdf_errors = None               # Histdd, will be set by Model upon initialization.
-    energy_distribution = None      # Histdd of rate /kg /keV /day. Will be set by Model upon initialization.
-    fraction_in_range = 0           # Fraction of simulated events that fall in analysis space. Set by Model.
+    fraction_in_range = 0           # Fraction of simulated events that fall in analysis space. Also set by Model.
     analysis_target = False
 
     def __init__(self, config, spec):
@@ -36,44 +36,12 @@ class Source(object):
         for k, v in spec.items():       # Store source specs as attributes
             setattr(self, k, v)
 
-        s1_ly_filename = pax.utils.data_file_name(c['s1_relative_ly_map_filename'])
-        s1_map_data = json.loads(gzip.open(s1_ly_filename).read().decode())
-        self.s1_relative_ly_lookup = NearestNDInterpolator(np.array(s1_map_data['coordinate_system']),
-                                                           np.array(s1_map_data['map']))
-
-        # Presample the relative light yield (from x, y) and z given the source's geometry,
-        # useful since looking up the light yield is rather slow.
-        # TODO: storing these makes the pickles for these models rather large (>100MB for 1e6 events, several models...)
-        n_trials = c['n_location_samples']
-
-        if self.spatial_distribution == 'uniform':
-            # Careful with sampling uniformly in a circle:
-            # homogeneous in r2, not r...
-            r2 = np.random.uniform(0, c['fiducial_volume_radius']**2, n_trials)
-            theta = np.random.uniform(0, 2*np.pi, n_trials)
-            r = np.sqrt(r2)
-            self._x = r * np.cos(theta)
-            self._y = r * np.sin(theta)
-            self._z = np.random.uniform(c['ficudial_volume_zmin'], c['ficudial_volume_zmax'], size=n_trials)
-            self._rel_ly = self.s1_relative_ly_lookup(self._x, self._y, self._z)
-        else:
-            raise ValueError("Spatial distribution %s not yet supported!" % self.spatial_distribution)
-
-
-        # Compute the integrate event rate (in events / day)
-        # This includes all recoil events; many will probably be out of range of the analysis space.
+        # Compute the integrated event rate (in events / day)
+        # This includes all events that produce a recoil; many will probably be out of range of the analysis space.
         h = self.energy_distribution
         if h is None:
             raise ValueError("You need to specify an energy spectrum for the source %s" % self.name)
         self.events_per_day = h.histogram.sum() * self.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
-
-    def sample_locations(self, n_trials):
-        """Returns x, y, z, relative_light_yield; each an array of n_trials samples"""
-        position_is = np.random.randint(0, len(self._z), n_trials)
-        return self._x[position_is], self._y[position_is], self._z[position_is], self._rel_ly[position_is]
-
-    def sample_energies(self, n_trials):
-        return self.energy_distribution.get_random(n_trials)
 
     def pdf(self, *args):
         return self.pdf_histogram.lookup(*args)
@@ -84,8 +52,8 @@ class Source(object):
 
         # Store everything in a structured array:
         d = np.zeros(n_events, dtype=[('energy', np.float),
-                                      ('x', np.float),
-                                      ('y', np.float),
+                                      ('r2', np.float),
+                                      ('theta', np.float),
                                       ('z', np.float),
                                       ('p_photon_detected', np.float),
                                       ('p_electron_detected', np.float),
@@ -107,8 +75,16 @@ class Source(object):
         if not len(d):
             return d
 
-        d['energy'] = self.sample_energies(n_events)
-        d['x'], d['y'], d['z'], rel_lys = self.sample_locations(n_events)
+        d['energy'] = self.energy_distribution.get_random(n_events)
+
+        # Sample the positions and relative light yields
+        if self.spatial_distribution == 'uniform':
+            d['r2'] = np.random.uniform(0, c['fiducial_volume_radius']**2, n_events)
+            d['theta'] = np.random.uniform(0, 2*np.pi, n_events)
+            d['z'] = np.random.uniform(c['ficudial_volume_zmin'], c['ficudial_volume_zmax'], size=n_events)
+            rel_lys = self.config['s1_relative_ly_map'].lookup(d['r2'], d['z'])
+        else:
+            raise NotImplementedError("Only uniform sources supported for now...")
 
         # Get the light & charge collection efficiency
         d['p_photon_detected'] = c['ph_detection_efficiency'] * rel_lys
@@ -119,7 +95,8 @@ class Source(object):
         n_quanta = np.random.normal(n_quanta,
                                     np.sqrt(self.config['base_quanta_fano_factor'] * n_quanta),
                                     size=n_events)
-        # 0 or negative numbers of quanta give trouble with the latr formulas.
+
+        # 0 or negative numbers of quanta give trouble with the later formulas.
         # Store which events are bad, set them to 1 quanta for now, then zero them later.
         bad_events = n_quanta < 1
         n_quanta = np.clip(n_quanta, 1, float('inf'))

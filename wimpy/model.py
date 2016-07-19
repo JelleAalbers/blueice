@@ -3,18 +3,14 @@ import collections
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import brentq, minimize
-from scipy import stats
 from tqdm import tqdm
 from copy import deepcopy
 
 from multihist import Histdd
 from .source import Source
-
+from . import utils
 
 # Features I would like to add:
-#  - Special treatment of uniform spatial distribution: don't store samples for each source...
-#  - Factor limit setting out to a new file / class?
 #  - Non-asymptotic limit setting
 #  - General (shape) uncertainties
 #  - Fit parameters other than source strength
@@ -22,16 +18,18 @@ from .source import Source
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
 
-    dormant sources have their pdf computed on initialization, but are not considered in fitting.
+    Dormant sources have their pdf computed on initialization, but are not considered in the likelihood computation.
     Use activate_source(source_id) and deactivate_source(source_id) to swap sources between dormant and active.
-    Only one active source can be analysis target, if you activate a new one the previous one is automatically
-    deactivated. The source which is the analysis target is always last in the source list.
+
+    Setting analysis_target = True ensures that:
+     - Only one source with analysis_target = True can be active at the same time.
+       If you activate a new one, the old one will be deactivated.
+     - The source is always last in the model.sources list. This is used in the analysis methods.
     """
     config = None            # type: dict
     no_wimp_strength = -10
     max_wimp_strength = 4
     exposure_factor = 1      # Increase this to quickly change the exposure of the model
-    source_to_fit = -1       # Index of the source whose rate we want to constrain
 
     def __init__(self, config, ipp_client=None, **kwargs):
         """
@@ -40,15 +38,18 @@ class Model(object):
         :param kwargs: Overrides for the config (optional)
         :return:
         """
-        c = self.config = deepcopy(config)
+        self.config = deepcopy(config)
         self.config.update(kwargs)
 
-        self.space = collections.OrderedDict(c['analysis_space'])
+        self.space = collections.OrderedDict(self.config['analysis_space'])
         self.dims = list(self.space.keys())
         self.bins = list(self.space.values())
 
-        self.sources = self._init_sources(c['sources'], ipp_client=ipp_client)
-        self.dormant_sources = self._init_sources(c['dormant_sources'], ipp_client=ipp_client)
+        with open(utils.data_file_name(self.config['s1_relative_ly_map']), mode='rb') as infile:
+            self.config['s1_relative_ly_map'] = pickle.load(infile)
+
+        self.sources = self._init_sources(self.config['sources'], ipp_client=ipp_client)
+        self.dormant_sources = self._init_sources(self.config['dormant_sources'], ipp_client=ipp_client)
 
     def _init_sources(self, source_specs, ipp_client=None):
         result = []
@@ -123,8 +124,23 @@ class Model(object):
         source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
         source.pdf_errors[source.pdf_errors == 0] = float('nan')
 
+    def get_source_i(self, source_id, from_dormant=False):
+        if isinstance(source_id, (int, float)):
+            return int(source_id)
+        else:
+            for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
+                if source_id in s.name:
+                    break
+            else:
+                raise ValueError("Unknown source %s" % source_id)
+            return s_i
+
     def activate_source(self, source_id):
         """Activates the source named source_id from the list of dormant sources."""
+        # Is the source already active?
+        if source_id in [s.name for s in model.sources]:
+            print("Source %s is already active - nothing done." % source_id)
+            return
         dormant_source_i = self.get_source_i(source_id, from_dormant=True)
         s = self.dormant_sources[dormant_source_i]
         if s.analysis_target:
@@ -207,146 +223,30 @@ class Model(object):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
         return np.vstack([s.pdf(*self.to_space(d)) for s in self.sources])
 
-    def get_source_i(self, source_id, from_dormant=False):
-        if isinstance(source_id, (int, float)):
-            return int(source_id)
-        else:
-            for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
-                if source_id in s.name:
-                    break
-            else:
-                raise ValueError("Unknown source %s" % source_id)
-            return s_i
-
-    def loglikelihood(self, d, wimp_strength, ps=None, rate_modifiers=None):
-        """Gives the log-likelihood of the dataset d
-        under the hypothesis that the source source_id's rate is multiplied by 10**strength.
-        rate_modifiers: array of rate adjustments for each source.
-                        Rate will be increaed by source.rate * source.rate_uncertainty * rate_modifier events/day,
-                        Penalty term in likelihood is normal(0, 1).logpdf(rate_modifier)
-        NB: Assumes d is already restricted to analysis space. If not, you will get into trouble!!
+    def expected_events(self, s=None):
+        """Return the total number of events expected in the analysis range for the source s.
+        If no source specified, return an array of results for all sources.
         """
-        if rate_modifiers is None:
-            rate_modifiers = np.zeros(len(self.sources))
-        else:
-            rate_modifiers = np.asarray(rate_modifiers)
+        if s is None:
+            return np.array([self.expected_events(s) for s in self.sources])
+        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * self.exposure_factor
 
-        # Compute expected number of events for each source
-        mu = np.array([s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * self.exposure_factor
-                       for s in self.sources])
-
-        # Set the correct rate for the WIMP signal
-        mu[-1] *= 10**wimp_strength
-
-        # Apply the rate modifiers
-        mu *= 1 + rate_modifiers * np.asarray([s.rate_uncertainty for s in self.sources])
-        mu = np.clip(mu, 0, float('inf'))
-
-        # Compute p(event) for each source. ps has shape (n_sources, n_events).
+    def loglikelihood(self, d, mu=None, ps=None):
+        """Return the log-likelihood of the dataset d under the model,
+        mu: array of n_sources, expected number of events for each source.
+        """
+        # TODO: this function should no longer exist!
         if ps is None:
             ps = self.score_events(d)
+        if mu is None:
+            mu = np.array([self.expected_events(s) for s in m.sources])
 
         # Return the extended log likelihood (without tedious normalization constant that anyway drops out of
         # likelihood ratio computations).
-        result = -mu.sum() + np.sum(np.log(np.sum(mu[:,np.newaxis] * ps, axis=0)))
-        result += stats.norm.logpdf(rate_modifiers).sum()  # - len(m.sources) * stats.norm.logpdf(0)
+        return utils.extended_maximum_likelihood(mu, ps)
         return result
 
-    def bestfit(self, d, guess_strength=0, fit_uncertainties=False, fit_strength=True, ps=None):
-        """Returns best-fit wimp strength for dataset d, loglikelihood value at that point.
-        Throws exception if optimization is unsuccesfull
-        if float_uncertainties = True, fits and returns the rate uncertainties for each source
-
-        """
-        if ps is None:
-            ps = self.score_events(d)
-
-        def add_zeros_if_not_uncertain(_rate_mods_temp):
-            # Get rate modifiers from params: fold in zeros for sources without rate uncertainties
-            _rate_mods_temp = _rate_mods_temp.tolist()
-            return [_rate_mods_temp.pop(0) if s.rate_uncertainty else 0 for s in self.sources]
-
-        n_uncertain_sources = len([s for s in self.sources if s.rate_uncertainty != 0])
-
-        # Determine what kind of minimization we should do.
-        if fit_uncertainties and fit_strength:
-            guess = [guess_strength] + [0] * n_uncertain_sources
-
-            def objective(params):
-                return -self.loglikelihood(d, params[0], ps=ps,
-                                           rate_modifiers=add_zeros_if_not_uncertain(params[1:]))
-
-
-        elif fit_uncertainties:
-            guess = [0] * n_uncertain_sources
-
-            def objective(params):
-                return -self.loglikelihood(d, guess_strength, ps=ps,
-                                           rate_modifiers=add_zeros_if_not_uncertain(params))
-
-        elif fit_strength:
-            guess = [guess_strength]
-
-            def objective(wimp_strength):
-                return -self.loglikelihood(d, wimp_strength, ps=ps)
-
-        else:
-            # Fit nothing: just calculate!
-            return guess_strength, self.loglikelihood(d, guess_strength, ps=ps)
-
-        # For some reason the default BGFS minimization fails hard... Powell does much better
-        optresult = minimize(objective, guess, method='Powell')
-        if not optresult.success:
-            raise RuntimeError("Optimization failure: ", optresult)
-        return optresult.x, -optresult.fun
-
-        # Sometimes a data is very background-like, and the best fit is a silly low value (-700 or something).
-        # Maybe we should regard this as 'unphysical' and return self.no_wimp_strength instead?
-        # if bestfit < model.no_wimp_strength:
-        #     return self.no_wimp_strength, self.loglikelihood(d, self.no_wimp_strength)
-
-    def interval(self, d, confidence_level=0.9, kind='limit', profile=False):
-        """Return an interval of kind and confidence_level on dataset d
-         - d is assumed to be restricted to the analysis range.
-         - confidence level is the probability content of the interval (1 - the false positive rate)
-         - kind can be 'central' (for a two-sided central CI) or 'limit' (for upper limits)
-         - If profile=True, will compute a profile likelihood interval, i.e. will consider the rate uncertainty on each
-           source.
-
-        The interval is set using the likelihood ratio method, assuming the asymptotic distribution (Wilk's theorem)
-        for the likelihood ratio test statistic.
-        """
-        ps = self.score_events(d)
-
-        # Find the best-fit wimp strength
-        optresult, max_likelihood = self.bestfit(d, ps=ps, fit_uncertainties=profile, fit_strength=True)
-        best_strength = optresult[0] if profile else optresult.item()
-
-        def f(wimp_strength, z):
-            fit, conditional_max_ll = self.bestfit(d, wimp_strength, fit_strength=False, fit_uncertainties=profile)
-            return 2*(max_likelihood - conditional_max_ll) - z**2
-
-        if kind == 'limit':
-            return brentq(f,
-                          best_strength, self.max_wimp_strength,
-                          args=(stats.norm(0, 1).ppf(confidence_level),))
-
-        elif kind == 'central':
-            if best_strength <= self.no_wimp_strength:
-                a = self.no_wimp_strength
-            else:
-                a = brentq(f,
-                           self.no_wimp_strength, best_strength,
-                           args=(stats.norm(0, 1).ppf(1/2 - confidence_level/2),))
-            b = brentq(f,
-                       best_strength, self.max_wimp_strength,
-                       args=(stats.norm(0, 1).ppf(1/2 + confidence_level/2),))
-            return a, b
-
-        else:
-            raise ValueError("Invalid interval kind %s" % kind)
-
-    # Utilities
+    # Utility methods
     @staticmethod
     def load(filename):
         with open(filename, mode='rb') as infile:
