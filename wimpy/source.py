@@ -159,13 +159,15 @@ class Source(object):
                                              float('inf')))
 
         # Get the corrected S1 and S2, assuming our posrec + correction map is perfect
-        # Note these definitions don't just correct, they also scale back to the number of quanta!
-        d['cs1'] = d['s1'] / d['p_photon_detected']
-        d['cs2'] = d['s2'] / d['p_electron_detected'] / c['s2_gain']
+        # Note this does NOT assume the analyst knows the absolute photon detection efficiency
+        # photon detection efficiency / p_photon_detected is just the relative light yield at the position.
+        s1_correction = c['ph_detection_efficiency'] / d['p_photon_detected']
+        d['cs1'] = d['s1'] * s1_correction
+        d['cs2'] = d['s2']
 
         # Assuming we know the total number of photons detected (perfect hit counting),
         # give the ML estimate of the number of photons produced.
-        d['magic_cs1'] = d['s1_photons_detected'] / d['p_photon_detected']
+        d['magic_cs1'] = d['s1_photons_detected'] * s1_correction
 
         # Remove events without an S1 or S1
         if self.config['require_s1']:

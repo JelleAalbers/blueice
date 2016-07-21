@@ -1,10 +1,13 @@
 import pickle
+import os
 import collections
+import json
+from hashlib import sha1
+from copy import deepcopy
 
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from copy import deepcopy
 
 from multihist import Histdd
 from .source import Source
@@ -15,53 +18,78 @@ from . import utils
 #  - General (shape) uncertainties
 #  - Fit parameters other than source strength
 
+
+def load_pickle(filename):
+    """Loads a pickle from filename"""
+    with open(utils.data_file_name(filename), mode='rb') as infile:
+        return pickle.load(infile)
+
+def save_pickle(stuff, filename):
+    """Saves stuff in a pickle at filename"""
+    with open(filename, mode='wb') as outfile:
+        pickle.dump(stuff, outfile)
+#
+# def hash_dict(d):
+#     return tuple(sorted(d.items()))
+
+
 class Model(object):
     """Model for XENON1T dataset simulation and analysis
-
-    Dormant sources have their pdf computed on initialization, but are not considered in the likelihood computation.
-    Use activate_source(source_id) and deactivate_source(source_id) to swap sources between dormant and active.
-
-    Setting analysis_target = True ensures that:
-     - Only one source with analysis_target = True can be active at the same time.
-       If you activate a new one, the old one will be deactivated.
-     - The source is always last in the model.sources list. This is used in the analysis methods.
     """
     config = None            # type: dict
-    no_wimp_strength = -10
-    max_wimp_strength = 4
     exposure_factor = 1      # Increase this to quickly change the exposure of the model
+    from_cache = False       # If true, this model's pdfs were loaded from the cache
 
     def __init__(self, config, ipp_client=None, **kwargs):
         """
         :param config: Dictionary specifying detector parameters, source info, etc.
         :param ipp_client: ipyparallel client to use for parallelizing pdf computation (optional)
         :param kwargs: Overrides for the config (optional)
+        :param cache: Saves the model after initialization. Will has the config to provide identifier.
         :return:
         """
         self.config = deepcopy(config)
         self.config.update(kwargs)
 
+        # Compute a hash of the config dictionary now that it is still "unpimped"
+        self.config_hash = sha1(json.dumps(self.config, sort_keys=True).encode()).hexdigest()
+        # hashable = deepcopy(self.config)
+        # hashable['sources'] = tuple([hash_dict(x) for x in hashable['sources']])
+        # self.config_hash = hash(hash_dict(hashable))
+        cache_filename = 'pdfs_%s.pklz' % self.config_hash
+
+        # Have we computed the pdfs for this configuration before? If so, load them.
+        if not self.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
+            self.from_cache = True
+            cached_source_data = load_pickle(cache_filename)
+            for i, source_spec in enumerate(self.config['sources']):
+                self.config['sources'][i].update(cached_source_data[source_spec['name']])
+
+        # "pimp" the configuration by turning file name settings into the objects they represent
+        # After this we can no longer compute a hash of the config.
+        self.config['s1_relative_ly_map'] = load_pickle(self.config['s1_relative_ly_map'])
+        for s_i, source_spec in enumerate(self.config['sources']):
+            self.config['sources'][s_i]['energy_distribution'] = \
+                load_pickle(source_spec['energy_distribution'])
+
         self.space = collections.OrderedDict(self.config['analysis_space'])
         self.dims = list(self.space.keys())
         self.bins = list(self.space.values())
 
-        with open(utils.data_file_name(self.config['s1_relative_ly_map']), mode='rb') as infile:
-            self.config['s1_relative_ly_map'] = pickle.load(infile)
-
-        self.sources = self._init_sources(self.config['sources'], ipp_client=ipp_client)
-        self.dormant_sources = self._init_sources(self.config['dormant_sources'], ipp_client=ipp_client)
-
-    def _init_sources(self, source_specs, ipp_client=None):
-        result = []
-        for source_spec in source_specs:
+        # Intialize the sources
+        self.sources = []
+        for source_spec in self.config['sources']:
             source = Source(self.config, source_spec)
-
-            # Has the PDF in the analysis space already been provided in the spec?
-            # Usually not: do so now.
-            if source.pdf_histogram is None or c['force_pdf_recalculation']:
+            if source.pdf_histogram is None or self.config['force_pdf_recalculation']:
                 self.compute_source_pdf(source, ipp_client=ipp_client)
-            result.append(source)
-        return result
+            self.sources.append(source)
+
+        if not self.from_cache and self.config.get('save_pdfs', True):
+            # Save the source PDFs, rate, etc. for later use
+            save_pickle({s.name: {k: getattr(s, k) for k in ('pdf_histogram', 'pdf_errors', 'fraction_in_range',
+                                                             'events_per_day')}
+                         for s in self.sources},
+                        cache_filename)
 
     def compute_source_pdf(self, source, ipp_client=None):
         """Computes the PDF of the source in the analysis space.
@@ -124,41 +152,16 @@ class Model(object):
         source.pdf_errors = source.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
         source.pdf_errors[source.pdf_errors == 0] = float('nan')
 
-    def get_source_i(self, source_id, from_dormant=False):
+    def get_source_i(self, source_id):
         if isinstance(source_id, (int, float)):
             return int(source_id)
         else:
-            for s_i, s in enumerate(self.sources if not from_dormant else self.dormant_sources):
+            for s_i, s in enumerate(self.sources):
                 if source_id in s.name:
                     break
             else:
                 raise ValueError("Unknown source %s" % source_id)
             return s_i
-
-    def activate_source(self, source_id):
-        """Activates the source named source_id from the list of dormant sources."""
-        # Is the source already active?
-        if source_id in [s.name for s in model.sources]:
-            print("Source %s is already active - nothing done." % source_id)
-            return
-        dormant_source_i = self.get_source_i(source_id, from_dormant=True)
-        s = self.dormant_sources[dormant_source_i]
-        if s.analysis_target:
-            # Insert the new analysis target at the end of the list
-            self.deactivate_source(-1, force=True)
-            self.sources.append(s)
-        else:
-            self.sources = self.sources[:-1] + [s] + self.sources[-1]
-        del self.dormant_sources[dormant_source_i]
-
-    def deactivate_source(self, source_id, force=False):
-        """Deactivates the source named source_id"""
-        source_i = self.get_source_i(source_id)
-        s = self.sources[source_i]
-        if not force and s.analysis_target:
-            raise ValueError("Cannot deactivate the analysis target: please activate a new one instead.")
-        self.dormant_sources.append(s)
-        del self.sources[source_i]
 
     def range_cut(self, d, ps=None):
         """Return events from dataset d which are in the analysis space
@@ -230,19 +233,3 @@ class Model(object):
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])
         return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * self.exposure_factor
-
-    # Utility methods
-    @staticmethod
-    def load(filename):
-        with open(filename, mode='rb') as infile:
-            return pickle.load(infile)
-
-    def save(self, filename=None):
-        if filename is None:
-            filename = 'model_' + str(np.random.random())
-        with open(filename, mode='wb') as outfile:
-            pickle.dump(self, outfile)
-        return filename
-
-    def copy(self):
-        return deepcopy(self)

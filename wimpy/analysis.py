@@ -9,13 +9,6 @@ from scipy.optimize import brentq, minimize
 from scipy import stats
 
 
-def extended_loglikelihood(mu, ps):
-    """Evaluate an extended likelihood function
-    :param mu: array of n_sources: expected number of events
-    :param ps: array of (n_sources, n_events): pdf value for each source and event
-    :return: loglikelihood
-    """
-    return -mu.sum() + np.sum(np.log(np.sum(mu[:, np.newaxis] * ps, axis=0)))
 
 
 def loglikelihood(m, d, wimp_strength, ps=None, rate_modifiers=None):
