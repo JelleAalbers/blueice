@@ -1,182 +1,127 @@
-import json
-import gzip
-
+import os
 import numpy as np
-from scipy.interpolate import NearestNDInterpolator
+from multihist import Histdd
+from tqdm import tqdm
 
-import pax
-
-from . import yields
-
+from .utils import load_pickle
 
 class Source(object):
-    """A source of events in the detector. Takes care of simulating events.
+    """Base class for a source of events.
+    Child classes must implement 'pdf' and 'simulate'.
+    Child classes need to ensure events_per_day and fraction_in_range is set.
     """
     name = 'unspecified'
     label = 'Catastrophic irreducible noise'
-    recoil_type = 'nr'
-    color = 'black'
-    n_events_for_pdf = 1e6
-    rate_uncertainty = 0
-    spatial_distribution = 'uniform'
+    color = 'black'                 # Color to use in plots
+    events_per_day = 0
+    fraction_in_range = 0           # Fraction of simulated events that fall in analysis space.
 
-    energy_distribution = None      # Histdd of rate /kg /keV /day.
-    events_per_day = 0              # Calculated on init.
-    pdf_histogram = None            # Histdd, will be set by Model upon initialization.
-    pdf_errors = None               # Histdd, will be set by Model upon initialization.
-    fraction_in_range = 0           # Fraction of simulated events that fall in analysis space. Also set by Model.
-    analysis_target = False
-
-    def __init__(self, config, spec):
+    def __init__(self, config, spec, *args, **kwargs):
         """
-        config: dict with general parameters (e.g. detector geometry, fiducial cut definition.)
-        spec: dict with source-specific stuff, e.g. name, energy_distibution, etc. Used to set attributes defined above.
+        config: dict with general parameters (same as Model.config)
+        spec: dict with source-specific stuff, e.g. name, label, etc. Used to set attributes defined above.
+        args and kwargs are ignored. Accepted so children can pass their args/kwargs on to parent without fear.
         """
-        self.config = c = config
+        self.config = config
         for k, v in spec.items():       # Store source specs as attributes
             setattr(self, k, v)
 
-        # Compute the integrated event rate (in events / day)
-        # This includes all events that produce a recoil; many will probably be out of range of the analysis space.
-        h = self.energy_distribution
-        if h is None:
-            raise ValueError("You need to specify an energy spectrum for the source %s" % self.name)
-        self.events_per_day = h.histogram.sum() * self.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
+    def pdf(self, *args):
+        raise NotImplementedError
+
+    def simulate(self, n_events):
+        raise NotImplementedError
+
+
+class MonteCarloSource(Source):
+    """A source which computes its PDF from MC simulation
+    """
+    n_events_for_pdf = 1e6
+    pdf_histogram = None            # Histdd
+    pdf_errors = None               # Histdd
+    from_cache = False              # If True, the pdf was loaded from cache instead of computed on init
+
+    def __init__(self, *args, **kwargs):
+        """Prepares the PDF of this source for use.
+        :param ipp_client: ipyparallel client to parallelize computation (optional)
+        """
+        ipp_client = kwargs.get('ipp_client')
+        super().__init__(*args, **kwargs)
+
+        # hash = self.config_hash    # TODO: add source info in hash
+
+        # cache_dir = self.config.get('pdf_cache_dir', 'pdf_cache')
+        # if not os.path.exists(cache_dir):
+        #     os.makedirs(cache_dir)
+        # cache_filename = cache_dir + str(hash)
+        #
+        # # Have we computed the pdfs etc. for this configuration before? If so, load the information.
+        # if not self.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
+        #     self.from_cache = True
+        #     for k, v in load_pickle(cache_filename):
+        #         setattr(self, k, v)
+        #     return
+        self.compute_pdf(ipp_client)
+
+        # # Should we save the source PDFs, rate, etc. for later use?
+        # if not self.from_cache and self.config.get('save_pdfs', True):
+        #     save_pickle({k: getattr(s, k) for k in ('pdf_histogram', 'pdf_errors', 'fraction_in_range',
+        #                                             'events_per_day')},
+        #                 cache_filename)
+
+    def compute_pdf(self, ipp_client=None):
+        # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)
+        # Number of events to simulate will be rounded up to the nearest batch size
+        batch_size = self.config['pdf_sampling_batch_size']
+        analysis_space = self.config['analysis_space']
+        bins = list([x[1] for x in analysis_space])   # TODO: Repetition with Model...
+        dims = list([x[0] for x in analysis_space])   # TODO: Repetition with Model...
+        n_batches = int((self.n_events_for_pdf * self.config['pdf_sampling_multiplier']) // batch_size + 1)
+        n_events = n_batches * batch_size
+        mh = Histdd(bins=bins)
+
+        def simulate_batch(args):
+            """Run one simulation batch and histogram it immediately (so we don't pass gobs of data around)"""
+            source, bins, dims, batch_size = args
+            d = source.simulate(batch_size)
+            d = [d[dims[i]] for i in range(len(dims))]          # TODO: repetition with Model...
+            return Histdd(*d, bins=bins).histogram
+
+        map_args = (simulate_batch, [(self, bins, dims, batch_size) for _ in range(n_batches)])
+
+        if ipp_client is not None:
+            # If this gives you a strange unintelligible error, turn on block_during_simulation
+            map_result = ipp_client.load_balanced_view().map(*map_args,
+                                                             ordered=False,
+                                                             block=self.config.get('block_during_simulation', False))
+        else:
+            map_result = map(*map_args)
+
+        if self.config.get('show_pdf_sampling_progress', True):
+            map_result = tqdm(map_result, total=n_batches, desc='Sampling PDF of %s' % self.name)
+
+        for r in map_result:
+            mh.histogram += r
+
+        self.fraction_in_range = mh.n / n_events
+
+        # Convert the histogram to a PDF
+        # This means we have to divide by
+        #  - the number of events histogrammed
+        #  - the bin sizes (particularly relevant for non-uniform bins!)
+        self.pdf_histogram = mh.similar_blank_hist()
+        self.pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+        if len(bins) == 1:
+            self.pdf_histogram.histogram /= np.diff(bins[0])
+        else:
+            self.pdf_histogram.histogram /= np.outer(*[np.diff(bins[i]) for i in range(len(bins))])
+
+        # Estimate the MC statistical error. Not used for anything, but good to inspect.
+        self.pdf_errors = self.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
+        self.pdf_errors[self.pdf_errors == 0] = float('nan')
+
+    def simulate(self, n_events):
+        raise NotImplementedError
 
     def pdf(self, *args):
         return self.pdf_histogram.lookup(*args)
-
-    def simulate(self, n_events):
-        """Simulate n_events from this source."""
-        c = self.config
-
-        # Store everything in a structured array:
-        d = np.zeros(n_events, dtype=[('energy', np.float),
-                                      ('r2', np.float),
-                                      ('theta', np.float),
-                                      ('z', np.float),
-                                      ('p_photon_detected', np.float),
-                                      ('p_electron_detected', np.float),
-                                      ('electrons_produced', np.int),
-                                      ('photons_produced', np.int),
-                                      ('electrons_detected', np.int),
-                                      ('s1_photons_detected', np.int),
-                                      ('s2_photons_detected', np.int),
-                                      ('s1_photoelectrons_produced', np.int),
-                                      ('s2_photoelectrons_produced', np.int),
-                                      ('s1', np.float),
-                                      ('s2', np.float),
-                                      ('cs1', np.float),
-                                      ('cs2', np.float),
-                                      ('source', np.int),  # Not set in this function
-                                      ('magic_cs1', np.float)])
-
-        # If we get asked to simulate 0 events, return the empty array immediately
-        if not len(d):
-            return d
-
-        d['energy'] = self.energy_distribution.get_random(n_events)
-
-        # Sample the positions and relative light yields
-        if self.spatial_distribution == 'uniform':
-            d['r2'] = np.random.uniform(0, c['fiducial_volume_radius']**2, n_events)
-            d['theta'] = np.random.uniform(0, 2*np.pi, n_events)
-            d['z'] = np.random.uniform(c['ficudial_volume_zmin'], c['ficudial_volume_zmax'], size=n_events)
-            rel_lys = self.config['s1_relative_ly_map'].lookup(d['r2'], d['z'])
-        else:
-            raise NotImplementedError("Only uniform sources supported for now...")
-
-        # Get the light & charge collection efficiency
-        d['p_photon_detected'] = c['ph_detection_efficiency'] * rel_lys
-        d['p_electron_detected'] = np.exp(d['z'] / c['v_drift']/ c['e_lifetime'])   # No minus: z is negative
-
-        # Get the mean number of "base quanta" produced
-        n_quanta = self.config['base_quanta_yield'] * d['energy']
-        n_quanta = np.random.normal(n_quanta,
-                                    np.sqrt(self.config['base_quanta_fano_factor'] * n_quanta),
-                                    size=n_events)
-
-        # 0 or negative numbers of quanta give trouble with the later formulas.
-        # Store which events are bad, set them to 1 quanta for now, then zero them later.
-        bad_events = n_quanta < 1
-        n_quanta = np.clip(n_quanta, 1, float('inf'))
-
-        p_becomes_photon = \
-            d['energy'] * getattr(yields, self.recoil_type + '_photon_yield')(self.config, d['energy']) / n_quanta
-
-        if self.recoil_type == 'er':
-            # No quanta get lost as heat:
-            p_becomes_electron = 1 - p_becomes_photon
-
-            # Apply extra recombination fluctuation (NEST tritium paper / Atilla Dobii's thesis)
-            p_becomes_electron = np.random.normal(p_becomes_electron,
-                                                  p_becomes_electron * self.config['recombination_fluctuation'],
-                                                  size=n_events)
-            p_becomes_electron = np.clip(p_becomes_electron, 0, 1)
-            p_becomes_photon = 1 - p_becomes_electron
-            n_quanta = np.round(n_quanta).astype(np.int)
-
-        elif self.recoil_type == 'nr':
-            # For NR some quanta get lost in heat.
-            # Remove them and rescale the p's so we can use the same code as for ERs after this.
-            p_becomes_electron = \
-                d['energy'] * getattr(yields, self.recoil_type + '_electron_yield')(self.config, d['energy']) / n_quanta
-            p_becomes_detectable = p_becomes_photon + p_becomes_electron
-            if p_becomes_detectable.max() > 1:
-                raise ValueError("p_detected max is %s??!" % p_becomes_detectable.max())
-            p_becomes_photon /= p_becomes_detectable
-            n_quanta = np.round(n_quanta).astype(np.int)
-            n_quanta = np.random.binomial(n_quanta, p_becomes_detectable)
-
-        else:
-            raise ValueError('Bad recoil type %s' % self.recoil_type)
-
-        d['photons_produced'] = np.random.binomial(n_quanta, p_becomes_photon)
-        d['electrons_produced'] = n_quanta - d['photons_produced']
-
-        # "Remove" bad events (see above); actual removal happens at the very end of the function
-        d['photons_produced'][bad_events] = 0
-        d['electrons_produced'][bad_events] = 0
-
-        # Detection efficiency
-        d['s1_photons_detected'] = np.random.binomial(d['photons_produced'], d['p_photon_detected'])
-        d['electrons_detected'] = np.random.binomial(d['electrons_produced'], d['p_electron_detected'])
-
-        # S2 amplification
-        d['s2_photons_detected'] = np.random.poisson(d['electrons_detected'] * c['s2_gain'])
-
-        # PMT response
-        for si in ('s1', 's2'):
-            # Convert photons to photoelectrons, taking double photoelectron emission into account
-            d[si + '_photoelectrons_produced'] = d[si + '_photons_detected'] + \
-                                                   np.random.binomial(d[si + '_photons_detected'],
-                                                                      c['double_pe_emission_probability'])
-
-            # Convert photoelectrons (in reality) to measured pe
-            d[si] = np.random.normal(d[si + '_photoelectrons_produced'],
-                                     np.clip(c['pmt_gain_width'] * np.sqrt(d[si + '_photoelectrons_produced']),
-                                             1e-9,   # Normal freaks out if sigma is 0...
-                                             float('inf')))
-
-        # Get the corrected S1 and S2, assuming our posrec + correction map is perfect
-        # Note this does NOT assume the analyst knows the absolute photon detection efficiency
-        # photon detection efficiency / p_photon_detected is just the relative light yield at the position.
-        s1_correction = c['ph_detection_efficiency'] / d['p_photon_detected']
-        d['cs1'] = d['s1'] * s1_correction
-        d['cs2'] = d['s2']
-
-        # Assuming we know the total number of photons detected (perfect hit counting),
-        # give the ML estimate of the number of photons produced.
-        d['magic_cs1'] = d['s1_photons_detected'] * s1_correction
-
-        # Remove events without an S1 or S1
-        if self.config['require_s1']:
-            # One photons detected doesn't count as an S1 (since it isn't distinguishable from a dark count)
-            d = d[d['s1_photons_detected'] >= 2]
-            d = d[d['s1'] > c['s1_area_threshold']]
-
-        if self.config['require_s2']:
-            d = d[d['electrons_detected'] >= 1]
-            d = d[d['s2'] > c['s2_area_threshold']]
-
-        return d

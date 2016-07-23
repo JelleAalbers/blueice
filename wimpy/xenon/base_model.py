@@ -4,6 +4,8 @@ A XENON1T model
 This is a bit off a mess because I don't yet know how to make a nice interface for specifying this.
 Maybe INI files or something...
 """
+import os
+import inspect
 import numpy as np
 from multihist import Hist1d
 
@@ -11,10 +13,15 @@ from pax import units
 from pax.configuration import load_configuration
 pax_config = load_configuration('XENON1T')
 
-config= dict(
+from .XENONSource import XENONSource
+
+# Store the directory of this file
+THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+
+
+
+config = dict(
     # Basic model info
-    analysis_space= (('cs1', tuple(np.linspace(0, 50, 100))),
-                     ('cs2', tuple(np.linspace(0, 7000, 100)))),
     sources = [
         {'energy_distribution': 'uniform_er_bg.pklz',
          'color': 'blue',
@@ -48,6 +55,10 @@ config= dict(
          'recoil_type': 'nr',
          'label': '50 GeV WIMP'}
     ],
+    data_dirs = [os.path.join(THIS_DIR, 'data'), '.'],
+    default_source_class = XENONSource,
+    analysis_space= (('cs1', tuple(np.linspace(0, 50, 100))),
+                     ('cs2', tuple(np.linspace(0, 7000, 100)))),
     livetime_days=2*365.25,
     require_s1 = True,
     require_s2 = True,

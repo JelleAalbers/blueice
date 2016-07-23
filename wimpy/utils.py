@@ -1,17 +1,35 @@
 import os
 import inspect
+import pickle
 
 
-# Store the directory of this file
-THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-
-
-def data_file_name(filename):
-    """Returns filename if a file exists there, else returns THIS_DIR/data/filename"""
+def data_file_name(filename, data_dirs=None):
+    """Returns filename if a file exists. Also checks data_dirs for the file."""
     if os.path.exists(filename):
         return filename
-    new_filename = os.path.join(THIS_DIR, 'data', filename)
-    if os.path.exists(new_filename):
-        return new_filename
-    else:
-        raise ValueError('File name or path %s not found!' % filename)
+    if data_dirs is not None:
+        return find_file_in_folders(filename, data_dirs)
+    return FileNotFoundError(filename)
+
+
+def find_file_in_folders(filename, folders):
+    """Searches for filename in folders, then return full path or raise FileNotFoundError
+    Does not recurse into subdirectories
+    """
+    for folder in folders:
+        full_path = os.path.join(folder, filename)
+        if os.path.exists(full_path):
+            return full_path
+    raise FileNotFoundError(filename)
+
+
+def load_pickle(filename, data_dirs=None):
+    """Loads a pickle from filename"""
+    with open(data_file_name(filename, data_dirs), mode='rb') as infile:
+        return pickle.load(infile)
+
+
+def save_pickle(stuff, filename):
+    """Saves stuff in a pickle at filename"""
+    with open(filename, mode='wb') as outfile:
+        pickle.dump(stuff, outfile)

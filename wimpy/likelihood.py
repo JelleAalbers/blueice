@@ -14,18 +14,27 @@ class LogLikelihood(object):
 
     Does NOT apply "priors" / penalty terms for subsidiary measurments
 
-    z-scores necessary to ensure interpolation is fair
-
+    self.config
+        unphysical_behaviour
+        outlier_likelihood
     """
-    def __init__(self, pdf_base_config, config=None, **kwargs):
-        if config is None:
-            config = {}
-        config.update(kwargs)
-        self.config = config
+    def __init__(self, pdf_base_config, likelihood_config=None, ipp_client=None, **kwargs):
+        """
+        :param pdf_base_config: dictionary with configuration passed to the Model
+        :param likelihood_config: dictionary with options for LogLikelihood itself
+        :param ipp_client: ipyparallel client. Use if you want to parallelize computation of the base model.
+        :param kwargs: Overrides for pdf_base_config
+        :return:
+        """
+        pdf_base_config.update(kwargs)
+        if likelihood_config is None:
+            likelihood_config = {}
+        self.config = likelihood_config
 
         self.pdf_base_config = pdf_base_config
-        self.rate_uncertainties = OrderedDict()
-        self.shape_uncertainties = OrderedDict()
+        self.base_model = None          # Base model: no variations of any settings
+        self.rate_uncertainties = OrderedDict()     # sourcename_rate -> logprior
+        self.shape_uncertainties = OrderedDict()    # settingname -> (anchors, logprior)
         self.source_list = []
         self.is_prepared = False
         self.is_data_set = False
@@ -33,49 +42,53 @@ class LogLikelihood(object):
         # These are only used in case there are shape uncertainties
         self.mu_interpolator = None     # RegularGridInterpolator mapping z scores -> rates for each source
         self.ps_interpolator = None     # RegularGridInterpolator mapping z scores -> (source, event) p-values
+        # These are no longer z-scores but the actual setting values, or their 'standins' for non-numerical settings
+        # (which may well be z-scores, but that's up to the user)
         self.anchor_z_arrays = None     # list of numpy arrays of z-parameters of each anchor model
         self.anchor_z_grid = None       # numpy array: z-parameter combinations grid
-        self.anchor_models = dict()
+        self.anchor_models = dict()     # dictionary mapping z-score -> actual model
 
         # These are only used in case there are NO shape uncertainties
-        self.lone_model = None        # in case there are no shape uncertainties, the only model used is stored here.
         self.ps = None                # ps of the data
 
+        # Compute the base model.
+        self.base_model = Model(self.pdf_base_config, ipp_client=ipp_client)
+        self.source_list = [s.name for s in self.base_model.sources]
+
     def prepare(self, *args, **kwargs):
-        """Prepares the likelihood function for use,
-        computing the models for each shape uncertainty anchor value combination.
+        """Prepares a likelihood function with shape uncertainties for use.
+        This will  compute the models for each shape uncertainty anchor value combination.
         Any arguments are passed through to Model initialization.
+        # TODO: quiet Model's progress bar
         """
-        if len(self.shape_uncertainties):
-            # Compute the anchor grid
-            self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
-                                    for setting_name, anchors in self.shape_uncertainties.items()]
-            self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
+        if not len(self.shape_uncertainties):
+            return
 
-            # Compute the anchor models
-            for _, zs in tqdm(self.anchor_grid_iterator(),
-                              total=np.product(self.anchor_z_grid.shape[:-1]),
-                              desc="Computing models for shape uncertainty anchor points"):
+        # Compute the anchor grid
+        self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
+                                for setting_name, (anchors, _) in self.shape_uncertainties.items()]
+        self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
 
-                # Construct the config for this model
-                config = deepcopy(self.pdf_base_config)
-                for i, (setting_name, anchors) in enumerate(self.shape_uncertainties.items()):
-                    config[setting_name] = anchors[zs[i]]
+        # Compute the anchor models
+        for _, zs in tqdm(self.anchor_grid_iterator(),
+                          total=np.product(self.anchor_z_grid.shape[:-1]),
+                          desc="Computing models for shape uncertainty anchor points"):
 
-                # Build the model
-                model = Model(config, *args, **kwargs)
-                self.anchor_models[tuple(zs)] = model
+            # Construct the config for this model
+            config = deepcopy(self.pdf_base_config)
+            for i, (setting_name, (anchors, _)) in enumerate(self.shape_uncertainties.items()):
+                config[setting_name] = anchors[zs[i]]
 
-                # Get the source list (from any one model would do)
-                self.source_list = [s.name for s in model.sources]
+            # Build the model
+            model = Model(config, *args, **kwargs)
+            self.anchor_models[tuple(zs)] = model
 
-            # Build the interpolator for the rates of each source
-            self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
-                                                           extra_dims=[len(self.source_list)])
+            # Get the source list (from any one model would do)
+            self.source_list = [s.name for s in model.sources]
 
-        else:
-            self.lone_model = Model(self.pdf_base_config)
-            self.source_list = [s.name for s in self.lone_model.sources]
+        # Build the interpolator for the rates of each source
+        self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
+                                                       extra_dims=[len(self.source_list)])
 
         self.is_prepared = True
 
@@ -85,49 +98,54 @@ class LogLikelihood(object):
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
-        if not self.is_prepared:
-            raise RuntimeError("First do .prepare(), then set the data.")
+        if not self.is_prepared and len(self.shape_uncertainties):
+            raise RuntimeError("You have shape uncertainties in your model: first do .prepare(), then set the data.")
         if len(self.shape_uncertainties):
             self.ps_interpolator = self.make_interpolator(f=lambda m: m.score_events(d),
                                                           extra_dims=[len(self.source_list), len(d)])
         else:
-            self.ps = self.lone_model.score_events(d)
+            self.ps = self.base_model.score_events(d)
 
         self.is_data_set = True
 
-    def add_rate_variation(self, source_name, spread):
+    def add_rate_parameter(self, source_name, log_prior=None):
         """Add a rate uncertainty parameter to the likelihood function
         :param source_name: Name of the source for which rate is uncertain
         :param spread: Fractional uncertainty on the rate
         """
-        self.rate_uncertainties[source_name] = spread
+        self.rate_uncertainties[source_name] = log_prior
 
-    def add_shape_variation(self, setting_name, anchors, spread=0):
+    def add_shape_parameter(self, setting_name, anchors, log_prior=None):
         """Add a shape uncertainty parameter to the likelihood function
         :param setting_name: Name of the setting to vary
-        :param anchors: a dictionary mapping z scores -> values of the setting to vary
-                        OR, if spread is specified, a list of z-scores.
-        :param spread: The fractional uncertainty on the setting's value.
-                       Use only when the setting is numerical, and you specified anchors as list of z-scores,
+        :param anchors: a list/tuple/array of setting values (if they are numeric)
+                        OR a dictionary with some numerical value -> setting values (for non-numeric settings).
+        For example, if you have LCE maps with varying reflectivities, use
+            add_shape_variation('s1_relative_ly_map', {0.98: 'lce_98%.pklz', 0.99: 'lce_99%.pklz, ...})
+        then the argument s1_relative_ly_map of the likelihood function takes values between 0.98 and 0.99.
         """
-        if spread != 0:
-            # Convert anchors to a dictionary from the spread and z-points provided
-            assert not isinstance(anchors, dict)
-            default_setting = self.pdf_base_config.get(setting_name)
-            if not isinstance(default_setting, (float, int)):
-                raise ValueError("When specifying shape uncertainty as a spread, "
+        if not isinstance(anchors, dict):
+            # Convert anchors list to a dictionary
+            if not isinstance(self.pdf_base_config.get(setting_name), (float, int)):
+                raise ValueError("When specifying anchors only by setting values, "
                                  "base setting must have a numerical default.")
-            anchors = {z: default_setting * (1 + z * spread) for z in anchors}
+            anchors = {z: z for z in anchors}
 
-        self.shape_uncertainties[setting_name] = anchors
+        self.shape_uncertainties[setting_name] = (anchors, log_prior)
 
     def __call__(self, **kwargs):
         if not self.is_data_set:
             raise RuntimeError("First do .set_data(dataset), then start evaluating the likelihood function")
+        result = 0
 
         if len(self.shape_uncertainties):
             # Get the shape uncertainty z values
-            zs = [kwargs.get(setting_name, 0) for setting_name, _ in self.shape_uncertainties.items()]
+            zs = []
+            for setting_name, (_, log_prior) in self.shape_uncertainties.items():
+                z = kwargs.get(setting_name, self.pdf_base_config.get(setting_name))
+                zs.append(z)
+                if log_prior is not None:
+                    result += log_prior(z)
 
             # The RegularGridInterpolators want numpy arrays: give it to them...
             zs = np.asarray([zs])
@@ -138,14 +156,21 @@ class LogLikelihood(object):
             ps = self.ps_interpolator(zs)[0]
 
         else:
-            mus = self.lone_model.expected_events()
+            mus = self.base_model.expected_events()
             ps = self.ps
 
-        # Apply the rate modifiers and uncertainties
+        # Apply the rate modifiers
         for source_i, source_name in enumerate(self.source_list):
-            mus[source_i] *= self.config.get('source_rate_multipliers', {}).get(source_name, 1)
             if source_name + '_rate' in kwargs:
-                mus[source_i] *= 1 + kwargs[source_name + '_rate'] * self.rate_uncertainties[source_name]
+                # The user gave a rate in total events/day, and this is what goes into the prior.
+                new_total_rate = kwargs[source_name + '_rate']
+                log_prior = self.rate_uncertainties[source_name]
+                if log_prior is not None:
+                    result += log_prior(new_total_rate)
+
+                # However, the model provides and the likelihood expects the number of events IN RANGE /day as mu.
+                # So we rescale:
+                mus[source_i] *= new_total_rate / self.base_model.get_source(source_name).events_per_day
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus > 0) & (mus < float('inf'))):
@@ -155,7 +180,7 @@ class LogLikelihood(object):
                 return -float('inf')
 
         # Get the loglikelihood. At last!
-        return extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-10))
+        return extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
 
     def anchor_grid_iterator(self):
         """Iterates over the anchor grid, yielding index, z-values"""
@@ -182,13 +207,35 @@ class LogLikelihood(object):
 
         return RegularGridInterpolator(self.anchor_z_arrays, anchor_scores)
 
+    # Convenience function for uncertainties.
+    # Adding more general priors is the user's responsibility
+    # (either provide prior argument to add_x_variation, or wrap the loglikelihood function)
+    # There is no corresponding one for shape uncertainties, since they can have non-numerical setting types
+    def add_rate_uncertainty(self, source_name, fractional_uncertainty):
+        """Adds a rate parameter to the likelihood function, with Gaussian prior around the default value"""
+        mu = self.base_model.get_source(source_name).events_per_day
+        self.add_rate_parameter(source_name, log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
 
-def extended_loglikelihood(mu, ps, outlier_likelihood=0):
+    def add_shape_uncertainty(self, setting_name, fractional_uncertainty, anchor_zs=(-2, -1, 0, 1, 2)):
+        """Adds a shape parameter to the likelihood function, with Gaussian prior around the default value.
+        :param anchor_zs: list/tuple/array of z-scores to use as the anchor points
+        """
+        mu = self.pdf_base_config.get(setting_name)
+        std = mu * fractional_uncertainty
+        if not isinstance(mu, (float, int)):
+            raise ValueError("%s does not have a numerical default setting" % setting_name)
+        self.add_shape_parameter(source_name,
+                                 anchors=mu + np.array(anchor_zs) * std,
+                                 log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
+
+
+def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
     """Evaluate an extended likelihood function
     :param mu: array of n_sources: expected number of events
     :param ps: array of (n_sources, n_events): pdf value for each source and event
-    :param ignore_outliers: if an event has p=0, ignore it (instead of making the whole loglikelihood -inf
-    :return: loglikelihood
+    :param outlier_likelihood: if an event has p=0, give it this likelihood (instead of 0, which makes the whole
+    loglikelihood infinite)
+    :return: ln(likelihood)
     """
     p_events = np.sum(mu[:, np.newaxis] * ps, axis=0)
     if outlier_likelihood != 0:
