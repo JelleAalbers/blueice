@@ -1,3 +1,6 @@
+# OLD STUFF! REMOVE OR UPDATE!
+
+
 """Functions which analyze model + data to set limits on model parameters.
 These could as well have been methods of Model... but
   - It would become a rather large class!

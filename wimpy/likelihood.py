@@ -209,7 +209,7 @@ class LogLikelihood(object):
 
     # Convenience function for uncertainties.
     # Adding more general priors is the user's responsibility
-    # (either provide prior argument to add_x_variation, or wrap the loglikelihood function)
+    # (either provide prior argument to add_x_parameter, or wrap the loglikelihood function)
     # There is no corresponding one for shape uncertainties, since they can have non-numerical setting types
     def add_rate_uncertainty(self, source_name, fractional_uncertainty):
         """Adds a rate parameter to the likelihood function, with Gaussian prior around the default value"""
@@ -221,10 +221,10 @@ class LogLikelihood(object):
         :param anchor_zs: list/tuple/array of z-scores to use as the anchor points
         """
         mu = self.pdf_base_config.get(setting_name)
-        std = mu * fractional_uncertainty
         if not isinstance(mu, (float, int)):
             raise ValueError("%s does not have a numerical default setting" % setting_name)
-        self.add_shape_parameter(source_name,
+        std = mu * fractional_uncertainty
+        self.add_shape_parameter(setting_name,
                                  anchors=mu + np.array(anchor_zs) * std,
                                  log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
 

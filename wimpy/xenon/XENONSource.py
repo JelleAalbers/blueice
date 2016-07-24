@@ -1,9 +1,6 @@
 import numpy as np
 
-import pax
-
 from wimpy.source import MonteCarloSource
-from wimpy.utils import load_pickle
 
 from . import yields
 
@@ -13,20 +10,19 @@ class XENONSource(MonteCarloSource):
     recoil_type = 'nr'
     energy_distribution = None      # Histdd of rate /kg /keV /day.
 
-    def __init__(self, config, spec, *args, **kwargs):
-        spec['energy_distribution'] = load_pickle(spec['energy_distribution'], config['data_dirs'])
-        super().__init__(config, spec, *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Compute the integrated event rate (in events / day)
         # This includes all events that produce a recoil; many will probably be out of range of the analysis space.
         h = self.energy_distribution
         if h is None:
             raise ValueError("You need to specify an energy spectrum for the source %s" % self.name)
-        self.events_per_day = h.histogram.sum() * self.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
+        self.events_per_day = h.histogram.sum() * self.model.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
 
     def simulate(self, n_events):
         """Simulate n_events from this source."""
-        c = self.config
+        c = self.model.config
 
         # Store everything in a structured array:
         d = np.zeros(n_events, dtype=[('energy', np.float),
@@ -60,7 +56,7 @@ class XENONSource(MonteCarloSource):
             d['r2'] = np.random.uniform(0, c['fiducial_volume_radius']**2, n_events)
             d['theta'] = np.random.uniform(0, 2*np.pi, n_events)
             d['z'] = np.random.uniform(c['ficudial_volume_zmin'], c['ficudial_volume_zmax'], size=n_events)
-            rel_lys = self.config['s1_relative_ly_map'].lookup(d['r2'], d['z'])
+            rel_lys = c['s1_relative_ly_map'].lookup(d['r2'], d['z'])
         else:
             raise NotImplementedError("Only uniform sources supported for now...")
 
@@ -69,9 +65,9 @@ class XENONSource(MonteCarloSource):
         d['p_electron_detected'] = np.exp(d['z'] / c['v_drift']/ c['e_lifetime'])   # No minus: z is negative
 
         # Get the mean number of "base quanta" produced
-        n_quanta = self.config['base_quanta_yield'] * d['energy']
+        n_quanta = c['base_quanta_yield'] * d['energy']
         n_quanta = np.random.normal(n_quanta,
-                                    np.sqrt(self.config['base_quanta_fano_factor'] * n_quanta),
+                                    np.sqrt(c['base_quanta_fano_factor'] * n_quanta),
                                     size=n_events)
 
         # 0 or negative numbers of quanta give trouble with the later formulas.
@@ -80,7 +76,7 @@ class XENONSource(MonteCarloSource):
         n_quanta = np.clip(n_quanta, 1, float('inf'))
 
         p_becomes_photon = \
-            d['energy'] * getattr(yields, self.recoil_type + '_photon_yield')(self.config, d['energy']) / n_quanta
+            d['energy'] * getattr(yields, self.recoil_type + '_photon_yield')(c, d['energy']) / n_quanta
 
         if self.recoil_type == 'er':
             # No quanta get lost as heat:
@@ -88,7 +84,7 @@ class XENONSource(MonteCarloSource):
 
             # Apply extra recombination fluctuation (NEST tritium paper / Atilla Dobii's thesis)
             p_becomes_electron = np.random.normal(p_becomes_electron,
-                                                  p_becomes_electron * self.config['recombination_fluctuation'],
+                                                  p_becomes_electron * c['recombination_fluctuation'],
                                                   size=n_events)
             p_becomes_electron = np.clip(p_becomes_electron, 0, 1)
             p_becomes_photon = 1 - p_becomes_electron
@@ -98,7 +94,7 @@ class XENONSource(MonteCarloSource):
             # For NR some quanta get lost in heat.
             # Remove them and rescale the p's so we can use the same code as for ERs after this.
             p_becomes_electron = \
-                d['energy'] * getattr(yields, self.recoil_type + '_electron_yield')(self.config, d['energy']) / n_quanta
+                d['energy'] * getattr(yields, self.recoil_type + '_electron_yield')(c, d['energy']) / n_quanta
             p_becomes_detectable = p_becomes_photon + p_becomes_electron
             if p_becomes_detectable.max() > 1:
                 raise ValueError("p_detected max is %s??!" % p_becomes_detectable.max())
@@ -130,14 +126,14 @@ class XENONSource(MonteCarloSource):
                                                    np.random.binomial(d[si + '_photons_detected'],
                                                                       c['double_pe_emission_probability'])
 
-            # Convert photoelectrons (in reality) to measured pe
+            # Convert photoelectrons to measured pe
             d[si] = np.random.normal(d[si + '_photoelectrons_produced'],
                                      np.clip(c['pmt_gain_width'] * np.sqrt(d[si + '_photoelectrons_produced']),
                                              1e-9,   # Normal freaks out if sigma is 0...
                                              float('inf')))
 
         # Get the corrected S1 and S2, assuming our posrec + correction map is perfect
-        # Note this does NOT assume the analyst knows the absolute photon detection efficiency
+        # Note this does NOT assume the analyst knows the absolute photon detection efficiency:
         # photon detection efficiency / p_photon_detected is just the relative light yield at the position.
         s1_correction = c['ph_detection_efficiency'] / d['p_photon_detected']
         d['cs1'] = d['s1'] * s1_correction
@@ -148,12 +144,12 @@ class XENONSource(MonteCarloSource):
         d['magic_cs1'] = d['s1_photons_detected'] * s1_correction
 
         # Remove events without an S1 or S1
-        if self.config['require_s1']:
+        if c['require_s1']:
             # One photons detected doesn't count as an S1 (since it isn't distinguishable from a dark count)
             d = d[d['s1_photons_detected'] >= 2]
             d = d[d['s1'] > c['s1_area_threshold']]
 
-        if self.config['require_s2']:
+        if c['require_s2']:
             d = d[d['electrons_detected'] >= 1]
             d = d[d['s2'] > c['s2_area_threshold']]
 

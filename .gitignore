@@ -5,10 +5,7 @@
 *~
 
 # Model data
-cs1_model
-pdfs_*
-
-
+pdf_cache
 
 
 # Byte-compiled / optimized / DLL files

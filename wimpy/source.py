@@ -3,7 +3,7 @@ import numpy as np
 from multihist import Histdd
 from tqdm import tqdm
 
-from .utils import load_pickle
+from . import utils
 
 class Source(object):
     """Base class for a source of events.
@@ -16,14 +16,15 @@ class Source(object):
     events_per_day = 0
     fraction_in_range = 0           # Fraction of simulated events that fall in analysis space.
 
-    def __init__(self, config, spec, *args, **kwargs):
+    def __init__(self, model, config, *args, **kwargs):
         """
         config: dict with general parameters (same as Model.config)
         spec: dict with source-specific stuff, e.g. name, label, etc. Used to set attributes defined above.
         args and kwargs are ignored. Accepted so children can pass their args/kwargs on to parent without fear.
         """
-        self.config = config
-        for k, v in spec.items():       # Store source specs as attributes
+        self.model = model
+        utils.process_files_in_config(config, self.model.config['data_dirs'])
+        for k, v in config.items():       # Store source specs as attributes
             setattr(self, k, v)
 
     def pdf(self, *args):
@@ -35,69 +36,73 @@ class Source(object):
 
 class MonteCarloSource(Source):
     """A source which computes its PDF from MC simulation
+    PDFs are cached in cache_dir.
     """
     n_events_for_pdf = 1e6
     pdf_histogram = None            # Histdd
     pdf_errors = None               # Histdd
     from_cache = False              # If True, the pdf was loaded from cache instead of computed on init
+    hash = None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model, config, ipp_client=None, **kwargs):
         """Prepares the PDF of this source for use.
         :param ipp_client: ipyparallel client to parallelize computation (optional)
         """
-        ipp_client = kwargs.get('ipp_client')
-        super().__init__(*args, **kwargs)
+        # Compute a hash of this source's config.
+        # Must do this before filename arguments are converted in Source.__init__.
+        self.hash = utils.deterministic_hash(config)
 
-        # hash = self.config_hash    # TODO: add source info in hash
+        super().__init__(model, config, **kwargs)
 
-        # cache_dir = self.config.get('pdf_cache_dir', 'pdf_cache')
-        # if not os.path.exists(cache_dir):
-        #     os.makedirs(cache_dir)
-        # cache_filename = cache_dir + str(hash)
-        #
-        # # Have we computed the pdfs etc. for this configuration before? If so, load the information.
-        # if not self.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
-        #     self.from_cache = True
-        #     for k, v in load_pickle(cache_filename):
-        #         setattr(self, k, v)
-        #     return
+        # What filename would a source with this config have in the cache?
+        cache_dir = self.model.config.get('pdf_cache_dir', 'pdf_cache')
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+        cache_filename = os.path.join(cache_dir, self.model.config['hash'] + self.hash)
+
+        # Have we computed the pdfs etc. for this configuration before? If so, load the information.
+        if not self.model.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
+            self.from_cache = True
+            for k, v in utils.load_pickle(cache_filename).items():
+                setattr(self, k, v)
+            return
+
         self.compute_pdf(ipp_client)
 
-        # # Should we save the source PDFs, rate, etc. for later use?
-        # if not self.from_cache and self.config.get('save_pdfs', True):
-        #     save_pickle({k: getattr(s, k) for k in ('pdf_histogram', 'pdf_errors', 'fraction_in_range',
-        #                                             'events_per_day')},
-        #                 cache_filename)
+        # Should we save the source PDFs, rate, etc. for later use?
+        if not self.from_cache and self.model.config.get('save_pdfs', True):
+            utils.save_pickle({k: getattr(self, k) for k in ('pdf_histogram', 'pdf_errors',
+                                                             'fraction_in_range', 'events_per_day')},
+                               cache_filename)
 
     def compute_pdf(self, ipp_client=None):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)
         # Number of events to simulate will be rounded up to the nearest batch size
-        batch_size = self.config['pdf_sampling_batch_size']
-        analysis_space = self.config['analysis_space']
-        bins = list([x[1] for x in analysis_space])   # TODO: Repetition with Model...
-        dims = list([x[0] for x in analysis_space])   # TODO: Repetition with Model...
-        n_batches = int((self.n_events_for_pdf * self.config['pdf_sampling_multiplier']) // batch_size + 1)
+        batch_size = self.model.config['pdf_sampling_batch_size']
+        bins = self.model.bins
+        n_batches = int((self.n_events_for_pdf * self.model.config['pdf_sampling_multiplier']) // batch_size + 1)
         n_events = n_batches * batch_size
         mh = Histdd(bins=bins)
 
         def simulate_batch(args):
             """Run one simulation batch and histogram it immediately (so we don't pass gobs of data around)"""
-            source, bins, dims, batch_size = args
+            source, batch_size = args
             d = source.simulate(batch_size)
-            d = [d[dims[i]] for i in range(len(dims))]          # TODO: repetition with Model...
-            return Histdd(*d, bins=bins).histogram
+            d = source.model.to_space(d)
+            return Histdd(*d, bins=source.model.bins).histogram
 
-        map_args = (simulate_batch, [(self, bins, dims, batch_size) for _ in range(n_batches)])
+        map_args = (simulate_batch, [(self, batch_size) for _ in range(n_batches)])
 
         if ipp_client is not None:
             # If this gives you a strange unintelligible error, turn on block_during_simulation
             map_result = ipp_client.load_balanced_view().map(*map_args,
                                                              ordered=False,
-                                                             block=self.config.get('block_during_simulation', False))
+                                                             block=self.model.config.get('block_during_simulation',
+                                                                                         False))
         else:
             map_result = map(*map_args)
 
-        if self.config.get('show_pdf_sampling_progress', True):
+        if self.model.config.get('show_pdf_sampling_progress', True):
             map_result = tqdm(map_result, total=n_batches, desc='Sampling PDF of %s' % self.name)
 
         for r in map_result:

@@ -1,21 +1,17 @@
-import pickle
-import os
 import collections
-import json
-from hashlib import sha1
 from copy import deepcopy
+import re
 
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
-from multihist import Histdd
-from .source import Source
 from . import utils
 
 # Hashing temporariliy disabled
 # until I figure out how to deal with 'difficult stuff' in config (e.g. functions...)
 # and how to keep track of source spec...
+# import json
+# from hashlib import sha1
 
 
 class Model(object):
@@ -33,28 +29,26 @@ class Model(object):
         self.config = deepcopy(config)
         self.config.update(kwargs)
 
-        # Compute a hash of the config dictionary now that it is still "unpimped"
-        # Useful for source PDF caching.
-        # self.config['hash'] = sha1(json.dumps(self.config, sort_keys=True).encode()).hexdigest()
+        # Compute a hash of the model config dictionary
+        # Notice we don't hash the sources key, so we can reuse source pdfs when we change other sources.
+        self.config['hash'] = utils.deterministic_hash({k: v for k, v in self.config.items()
+                                                        if k != 'sources'})
 
-        # "pimp" the configuration by turning file name settings into the objects they represent
-        # After this we can no longer compute a hash of the config.
-        # TODO: Get this to some XENON-specific Model / code...
-        self.config['s1_relative_ly_map'] = utils.load_pickle(self.config['s1_relative_ly_map'],
-                                                              self.config['data_dirs'])
+        # Load objects specified by file name into the config dictionary.
+        utils.process_files_in_config(self.config, self.config['data_dirs'])
 
         self.space = collections.OrderedDict(self.config['analysis_space'])
         self.dims = list(self.space.keys())
         self.bins = list(self.space.values())
 
         self.sources = []
-        for source_spec in self.config['sources']:
-            if 'class' in source_spec:
-                source_class = source_spec['class']
-                del source_spec['source_class']  # Don't want this stored with source
+        for source_config in self.config['sources']:
+            if 'class' in source_config:
+                source_class = source_config['class']
+                del source_config['source_class']    # Don't want this stored in source config
             else:
                 source_class = self.config['default_source_class']
-            self.sources.append(source_class(self.config, source_spec, ipp_client=ipp_client))
+            self.sources.append(source_class(self, source_config, ipp_client=ipp_client))
 
     def get_source(self, source_id):
         return self.sources[self.get_source_i(source_id)]
@@ -86,13 +80,16 @@ class Model(object):
 
         return d[mask]
 
-    def simulate(self, restrict=True):
+    def simulate(self, restrict=True, rate_multipliers=None):
         """Makes a toy dataset.
         if restrict=True, return only events inside analysis range
         """
+        if rate_multipliers is None:
+            rate_multipliers = dict()
         ds = []
         for s_i, source in enumerate(self.sources):
-            d = source.simulate(np.random.poisson(source.events_per_day * self.config['livetime_days']))
+            d = source.simulate(np.random.poisson(source.events_per_day * self.config['livetime_days'] *
+                                                  rate_multipliers.get(source.name, 1)))
             d['source'] = s_i
             ds.append(d)
         d = np.concatenate(ds)

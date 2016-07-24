@@ -21,40 +21,6 @@ THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe(
 
 
 config = dict(
-    # Basic model info
-    sources = [
-        {'energy_distribution': 'uniform_er_bg.pklz',
-         'color': 'blue',
-         'recoil_type': 'er',
-         'name': 'er_bg',
-         'n_events_for_pdf': 2e7,
-         'label': 'ER Background'},
-        {'energy_distribution': 'cnns.pklz',
-         'color': 'orange',
-         'recoil_type': 'nr',
-         'name': 'cnns',
-         'n_events_for_pdf': 5e6,
-         'label': 'CNNS'},
-        {'energy_distribution': 'radiogenic_neutrons.pklz',
-         'color': 'purple',
-         'recoil_type': 'nr',
-         'name': 'radiogenics',
-         'n_events_for_pdf': 5e6,
-         'label': 'Radiogenic neutrons'},
-        {'energy_distribution': 'radiogenic_neutrons.pklz',
-         'color': 'purple',
-         'recoil_type': 'nr',
-         'name': 'radiogenics',
-         'n_events_for_pdf': 5e6,
-         'label': 'Radiogenic neutrons'},
-        {'energy_distribution': 'wimp_50gev_1e-45.pklz',
-         'color': 'red',
-         'name': 'wimp_50gev',
-         'n_events_for_pdf': 5e6,
-         'analysis_target': True,
-         'recoil_type': 'nr',
-         'label': '50 GeV WIMP'}
-    ],
     data_dirs = [os.path.join(THIS_DIR, 'data'), '.'],
     default_source_class = XENONSource,
     analysis_space= (('cs1', tuple(np.linspace(0, 50, 100))),
@@ -65,6 +31,36 @@ config = dict(
     force_pdf_recalculation = False,
     pdf_sampling_multiplier = 1,
     pdf_sampling_batch_size = int(1e6),
+
+
+    # Basic model info
+    sources = [
+        {'energy_distribution': 'uniform_er_bg.pkl',
+         'color': 'blue',
+         'recoil_type': 'er',
+         'name': 'er_bg',
+         'n_events_for_pdf': 2e7,
+         'label': 'ER Background'},
+        {'energy_distribution': 'cnns.pkl',
+         'color': 'orange',
+         'recoil_type': 'nr',
+         'name': 'cnns',
+         'n_events_for_pdf': 5e6,
+         'label': 'CNNS'},
+        {'energy_distribution': 'radiogenic_neutrons.pkl',
+         'color': 'purple',
+         'recoil_type': 'nr',
+         'name': 'radiogenics',
+         'n_events_for_pdf': 5e6,
+         'label': 'Radiogenic neutrons'},
+        {'energy_distribution': 'wimp_50gev_1e-45.pkl',
+         'color': 'red',
+         'name': 'wimp_50gev',
+         'n_events_for_pdf': 5e6,
+         'analysis_target': True,
+         'recoil_type': 'nr',
+         'label': '50 GeV WIMP'}
+    ],
 
     # Thresholds on uncorrected S1/S2: for comparison with the Bologna model at low WIMP masses
     s1_area_threshold = 3,
@@ -86,7 +82,7 @@ config = dict(
     # Note z is negative, so the maximum z is actually the z of the top boundary of the fiducial volume
     ficudial_volume_zmax = - 0.05 * pax_config['DEFAULT']['tpc_length'],
     ficudial_volume_zmin = - 0.95 * pax_config['DEFAULT']['tpc_length'],
-    s1_relative_ly_map = 's1_rel_ly_pax5.1.pklz',
+    s1_relative_ly_map = 's1_rel_ly_pax5.1.pkl',
 
     # S1/S2 generation parameters
     nr_electron_yield_cutoff_energy = 1,  # keV.
