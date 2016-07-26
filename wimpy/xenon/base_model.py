@@ -23,8 +23,8 @@ THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe(
 config = dict(
     data_dirs = [os.path.join(THIS_DIR, 'data'), '.'],
     default_source_class = XENONSource,
-    analysis_space= (('cs1', tuple(np.linspace(0, 50, 100))),
-                     ('cs2', tuple(np.linspace(0, 7000, 100)))),
+    analysis_space= (('cs1', tuple(np.linspace(0, 50, 50))),
+                     ('cs2', tuple(np.linspace(0, 7000, 50)))),
     livetime_days=2*365.25,
     require_s1 = True,
     require_s2 = True,
@@ -85,8 +85,9 @@ config = dict(
     s1_relative_ly_map = 's1_rel_ly_pax5.1.pkl',
 
     # S1/S2 generation parameters
-    nr_electron_yield_cutoff_energy = 1,  # keV.
-    nr_electron_yield_behaviour_below_cutoff = 'const',   # 'const' or 'zero'. Be careful with the latter.
+    leff='leff_0.csv',
+    qy='qy_bezrukov.csv',
+    er_photon_yield='beta_photon_yield_nest_500V.csv',
     nr_photon_yield_field_quenching = 0.95,      # Monte Carlo note: add ref!
     reference_gamma_photon_yield = 63.4,         # NEST For 122... keV gamma, from MC note (add ref!)
     base_quanta_yield = 73,              # NEST's basic quanta yield, xenon:xenon1t:sim:notes:marco:conversion-ed-to-s1-s2

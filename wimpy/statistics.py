@@ -1,4 +1,3 @@
-# OLD STUFF! REMOVE OR UPDATE!
 
 
 """Functions which analyze model + data to set limits on model parameters.
@@ -11,32 +10,6 @@ import numpy as np
 from scipy.optimize import brentq, minimize
 from scipy import stats
 
-
-
-
-def loglikelihood(m, d, wimp_strength, ps=None, rate_modifiers=None):
-    """Gives the log-likelihood of the dataset d under the model m
-    under the hypothesis that the analysis target source's rate is multiplied by 10**strength.
-    rate_modifiers: array of rate adjustments for each source.
-                    Rate will be increaed by source.rate * source.rate_uncertainty * rate_modifier events/day,
-                    Penalty term in likelihood is normal(0, 1).logpdf(rate_modifier)
-    NB: Assumes d is already restricted to analysis space. If not, you will get into trouble!!
-    """
-    if rate_modifiers is None:
-        rate_modifiers = np.zeros(len(m.sources))
-    else:
-        rate_modifiers = np.asarray(rate_modifiers)
-    mu = np.array([m.expected_events(s) for s in m.sources])
-    mu *= 1 + rate_modifiers * np.asarray([s.rate_uncertainty for s in m.sources])
-    mu[-1] *= 10**wimp_strength
-    mu = np.clip(mu, 0, float('inf'))
-
-    if ps is None:
-        ps = m.score_events(d)
-
-    result = extended_loglikelihood(mu, ps)
-    result += stats.norm.logpdf(rate_modifiers).sum()  # - len(m.sources) * stats.norm.logpdf(0)
-    return result
 
 
 

@@ -3,6 +3,10 @@ from hashlib import sha1
 import pickle
 import re
 
+import pandas as pd
+import numpy as np
+from scipy.interpolate import interp1d
+
 
 def data_file_name(filename, data_dirs=None):
     """Returns filename if a file exists. Also checks data_dirs for the file."""
@@ -28,6 +32,12 @@ def load_pickle(filename, data_dirs=None):
     """Loads a pickle from filename"""
     with open(data_file_name(filename, data_dirs), mode='rb') as infile:
         return pickle.load(infile)
+
+
+def load_csv(filename, data_dirs=None):
+    """Read csv file and return numpy float arrays x, y"""
+    return pd.read_csv(data_file_name(filename, data_dirs),
+                       delimiter=',', names=['x', 'y'], comment='#').values[1:].astype(np.float).T
 
 
 def save_pickle(stuff, filename):
@@ -67,4 +77,24 @@ def process_files_in_config(config, data_dirs):
             _, ext = os.path.splitext(v)
             if ext == '.pkl':
                 config[k] = load_pickle(v, data_dirs)
+            elif ext == '.csv':
+                config[k] = load_csv(v, data_dirs)
             # Add support for other formats here
+
+
+class InterpolateAndExtrapolate1D(object):
+    """Extends scipy.interpolate.interp1d to do constant extrapolation outside of the data range
+    """
+    def __init__(self, points, values):
+        points = np.asarray(points)
+        self.interpolator = interp1d(points, values)
+        self.min = points.min()
+        self.max = points.max()
+
+    def __call__(self, points):
+        try:
+            points[0]
+        except TypeError:
+            points = np.array([points])
+        points = np.clip(points, self.min, self.max)
+        return self.interpolator(points)

@@ -53,6 +53,7 @@ class MonteCarloSource(Source):
         self.hash = utils.deterministic_hash(config)
 
         super().__init__(model, config, **kwargs)
+        self.setup()
 
         # What filename would a source with this config have in the cache?
         cache_dir = self.model.config.get('pdf_cache_dir', 'pdf_cache')
@@ -74,6 +75,12 @@ class MonteCarloSource(Source):
             utils.save_pickle({k: getattr(self, k) for k in ('pdf_histogram', 'pdf_errors',
                                                              'fraction_in_range', 'events_per_day')},
                                cache_filename)
+
+
+    def setup(self):
+        """Called just after converting config arguments, but before calculating pdf"""
+        pass
+
 
     def compute_pdf(self, ipp_client=None):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)

@@ -1,0 +1,21 @@
+# Median Leff from "Likelihood approach to the First Dark Matter Results of XENON100"
+# (I don't know who originally made it, maybe Guillaume, since the latest set of measurements these are based on come from his thesis?)
+# Curve traced from figure 1 by Jelle
+kevnr,leff
+1.01296,0.0571429,
+1.68811,0.0696104,
+4.26589,0.0914286,
+4.87294,0.0976623,
+5.44821,0.110649,
+6.35851,0.115325,
+7.35748,0.120519,
+9.39665,0.132468,
+12.1565,0.147013,
+16.1372,0.158442,
+19.4913,0.162597,
+25.3245,0.163117,
+31.9296,0.169351,
+44.4341,0.185455,
+56.2643,0.197922,
+76.3084,0.202078,
+94.1683,0.196883,

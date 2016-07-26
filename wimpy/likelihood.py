@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
+from scipy.optimize import minimize
 from scipy import stats
 from tqdm import tqdm
 
@@ -10,7 +11,7 @@ from .model import Model
 
 
 class LogLikelihood(object):
-    """Extended log likelihood function with several rate and/or shape uncertainties
+    """Extended log likelihood function with several rate and/or shape parameters
 
     Does NOT apply "priors" / penalty terms for subsidiary measurments
 
@@ -33,22 +34,24 @@ class LogLikelihood(object):
 
         self.pdf_base_config = pdf_base_config
         self.base_model = None          # Base model: no variations of any settings
-        self.rate_uncertainties = OrderedDict()     # sourcename_rate -> logprior
-        self.shape_uncertainties = OrderedDict()    # settingname -> (anchors, logprior)
+        self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
+        self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior).
+                                                 # where anchors is a dictionary: representative value -> actual setting
         self.source_list = []
         self.is_prepared = False
         self.is_data_set = False
 
-        # These are only used in case there are shape uncertainties
+        # These are only used in case there are shape parameters
         self.mu_interpolator = None     # RegularGridInterpolator mapping z scores -> rates for each source
         self.ps_interpolator = None     # RegularGridInterpolator mapping z scores -> (source, event) p-values
+        # TODO: rename some variables / change some comments:
         # These are no longer z-scores but the actual setting values, or their 'standins' for non-numerical settings
         # (which may well be z-scores, but that's up to the user)
         self.anchor_z_arrays = None     # list of numpy arrays of z-parameters of each anchor model
         self.anchor_z_grid = None       # numpy array: z-parameter combinations grid
         self.anchor_models = dict()     # dictionary mapping z-score -> actual model
 
-        # These are only used in case there are NO shape uncertainties
+        # These are only used in case there are NO shape parameters
         self.ps = None                # ps of the data
 
         # Compute the base model.
@@ -56,27 +59,27 @@ class LogLikelihood(object):
         self.source_list = [s.name for s in self.base_model.sources]
 
     def prepare(self, *args, **kwargs):
-        """Prepares a likelihood function with shape uncertainties for use.
-        This will  compute the models for each shape uncertainty anchor value combination.
+        """Prepares a likelihood function with shape parameters for use.
+        This will  compute the models for each shape parameters anchor value combination.
         Any arguments are passed through to Model initialization.
         # TODO: quiet Model's progress bar
         """
-        if not len(self.shape_uncertainties):
+        if not len(self.shape_parameters):
             return
 
         # Compute the anchor grid
         self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
-                                for setting_name, (anchors, _) in self.shape_uncertainties.items()]
+                                for setting_name, (anchors, _) in self.shape_parameters.items()]
         self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
 
         # Compute the anchor models
         for _, zs in tqdm(self.anchor_grid_iterator(),
                           total=np.product(self.anchor_z_grid.shape[:-1]),
-                          desc="Computing models for shape uncertainty anchor points"):
+                          desc="Computing models for shape parameter anchor points"):
 
             # Construct the config for this model
             config = deepcopy(self.pdf_base_config)
-            for i, (setting_name, (anchors, _)) in enumerate(self.shape_uncertainties.items()):
+            for i, (setting_name, (anchors, _)) in enumerate(self.shape_parameters.items()):
                 config[setting_name] = anchors[zs[i]]
 
             # Build the model
@@ -98,9 +101,9 @@ class LogLikelihood(object):
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
-        if not self.is_prepared and len(self.shape_uncertainties):
-            raise RuntimeError("You have shape uncertainties in your model: first do .prepare(), then set the data.")
-        if len(self.shape_uncertainties):
+        if not self.is_prepared and len(self.shape_parameters):
+            raise RuntimeError("You have shape parameters in your model: first do .prepare(), then set the data.")
+        if len(self.shape_parameters):
             self.ps_interpolator = self.make_interpolator(f=lambda m: m.score_events(d),
                                                           extra_dims=[len(self.source_list), len(d)])
         else:
@@ -109,14 +112,15 @@ class LogLikelihood(object):
         self.is_data_set = True
 
     def add_rate_parameter(self, source_name, log_prior=None):
-        """Add a rate uncertainty parameter to the likelihood function
-        :param source_name: Name of the source for which rate is uncertain
-        :param spread: Fractional uncertainty on the rate
+        """Add a rate parameters to the likelihood function
+        You don't actually have to use this unless you want to specify the prior.
+        :param source_name: Name of the source for which you want to vary the rate
+        :param log_prior: prior logpdf function on rate
         """
-        self.rate_uncertainties[source_name] = log_prior
+        self.rate_parameters[source_name] = log_prior
 
     def add_shape_parameter(self, setting_name, anchors, log_prior=None):
-        """Add a shape uncertainty parameter to the likelihood function
+        """Add a shape parameter to the likelihood function
         :param setting_name: Name of the setting to vary
         :param anchors: a list/tuple/array of setting values (if they are numeric)
                         OR a dictionary with some numerical value -> setting values (for non-numeric settings).
@@ -131,19 +135,25 @@ class LogLikelihood(object):
                                  "base setting must have a numerical default.")
             anchors = {z: z for z in anchors}
 
-        self.shape_uncertainties[setting_name] = (anchors, log_prior)
+        self.shape_parameters[setting_name] = (anchors, log_prior)
 
     def __call__(self, **kwargs):
         if not self.is_data_set:
             raise RuntimeError("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
 
-        if len(self.shape_uncertainties):
-            # Get the shape uncertainty z values
+        if len(self.shape_parameters):
+            # Get the shape parameter z values
             zs = []
-            for setting_name, (_, log_prior) in self.shape_uncertainties.items():
+            for setting_name, (_, log_prior) in self.shape_parameters.items():
                 z = kwargs.get(setting_name, self.pdf_base_config.get(setting_name))
                 zs.append(z)
+
+                # Test if the anchor value out of range, if so, return -inf (since is impossible)
+                minbound, maxbound = self.get_bounds(setting_name)
+                if not minbound <= z <= maxbound:
+                    return -float('inf')
+
                 if log_prior is not None:
                     result += log_prior(z)
 
@@ -152,7 +162,7 @@ class LogLikelihood(object):
 
             # Get mus (rate for each source) and ps (pdf value for each source for each event) at this point
             # The RegularGridInterpolators return numpy arrays with one extra dimension: remove it...
-            mus = self.mus_interpolator(np.array(zs)[0])
+            mus = self.mus_interpolator(np.array(zs))[0]
             ps = self.ps_interpolator(zs)[0]
 
         else:
@@ -164,7 +174,7 @@ class LogLikelihood(object):
             if source_name + '_rate' in kwargs:
                 # The user gave a rate in total events/day, and this is what goes into the prior.
                 new_total_rate = kwargs[source_name + '_rate']
-                log_prior = self.rate_uncertainties[source_name]
+                log_prior = self.rate_parameters.get(source_name, None)
                 if log_prior is not None:
                     result += log_prior(new_total_rate)
 
@@ -173,7 +183,7 @@ class LogLikelihood(object):
                 mus[source_i] *= new_total_rate / self.base_model.get_source(source_name).events_per_day
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
-        if not np.all((mus > 0) & (mus < float('inf'))):
+        if not np.all((mus >= 0) & (mus < float('inf'))):
             if self.config.get('unphysical_behaviour') == 'error':
                 raise ValueError("Unphysical rates: %s" % str(mus))
             else:
@@ -228,6 +238,107 @@ class LogLikelihood(object):
                                  anchors=mu + np.array(anchor_zs) * std,
                                  log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
 
+    def get_bounds(self, parameter_name):
+        """Return bounds on the parameter parameter_name"""
+        if parameter_name in self.shape_parameters:
+            anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
+            return min(anchor_settings), max(anchor_settings)
+        elif parameter_name.endswith('_rate'):
+            return 0, float('inf')
+        else:
+            raise ValueError("Non-existing parameter %s" % parameter_name)
+
+    def make_objective(self, guess=None, minus=True, **kwargs):
+        """Return convenient stuff for feeding this likelihood fucntion to an optimizer.
+        :param **kwargs: fixed values for certain parameters. These will not be fitted.
+        :param guess: dictionary with guesses for the remaining ("floating") parameters
+        If you don't supply a guess, the default / base model value will be used for rate parameters,
+        and 0 for shape parameters (fixme: use base model value, even if has been turned into monster).
+
+        :param minus: f provides the minimum of the likelihood function instead
+
+        Returns f, guesses, names:
+          - f: function which takes a single arraylike argument with only the floating parameters
+          - names: list, floating parameter names in correct order
+          - guesses: array of guesses in order taken by f
+          - bounds: list of tuples of bounds for floating parameters. (None, None) if there are no bounds for a param.
+        """
+        if guess is None:
+            guess = {}
+        names = []
+        bounds = []
+        guesses = []
+
+        # Experimental feature, not ready
+        rates_in_log_space=False
+
+        # Which rate parameters should we fit?
+        for p in self.rate_parameters.keys():
+            if p not in kwargs:
+                # Default is the number of events per day total (not just in range).
+                # This is what likelihood function expects, it knows how to deal with it.
+                expected = self.base_model.get_source(p).events_per_day
+                if rates_in_log_space:
+                    names.append('log_%s_rate' % p)
+                    guesses.append(np.log10(guess.get('%s_rate' % p, expected)))
+                else:
+                    names.append('%s_rate' % p)
+                    guesses.append(guess.get('%s_rate' % p, expected))
+                bounds.append((None, None))
+
+        # Which shape parameters should we fit?
+        for p in list(self.shape_parameters.keys()):
+            if p not in kwargs:
+                names.append(p)
+                bounds.append(self.get_bounds(p))
+                guesses.append(guess.get(p, 0))
+
+        # Minimize the - log likelihood
+        # Uses kwargs, sign, and self from external scope. So don't try to pickle it...
+        sign = -1 if minus else 1
+        def objective(args):
+            # Get the arguments from args, then fill in the ones already fixed in outer kwargs
+            call_kwargs = {k: args[i] for i, k in enumerate(names)}
+            call_kwargs.update(kwargs)
+            # for k, v in call_kwargs.items():
+            #     if k.startswith('log_') and k.endswith('_rate'):
+            #         # We're given the log10 of the rate, and must convert to the real rate
+            #         call_kwargs[k] = 10**v
+            return self(**call_kwargs) * sign
+
+        return objective, names, np.array(guesses), bounds
+
+    # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
+    def bestfit(self, minimize_kwargs=None, **kwargs):
+        """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
+        Optimization is performed with the scipy minimizer
+        Returns {param: best fit}, minimum loglikelihood.
+        Optimization is done with scipy.optimize minimize.
+        :param minimize_kwargs: dictionary with optimz to minimize
+        """
+        if minimize_kwargs is None:
+            minimize_kwargs = {}
+        # The default method (whatever it is -- it isn't clear) seems to fail immediately most of the time
+        # L-BFGS-B seems fast but also fails often..? Nelder-Mead is our last resort but really really slow
+        # minimize_kwargs.setdefault('method', 'Nelder-Mead')
+
+        f, names, guess, bounds = self.make_objective(minus=True, **kwargs)
+
+        optresult = minimize(f, guess,
+                             bounds=bounds,
+                             **minimize_kwargs)
+
+        if not optresult.success:
+            optresult = minimize(f, guess,
+                                 bounds=bounds,
+                                 method='Nelder-Mead',
+                                 **minimize_kwargs)
+            if not optresult.success:
+                raise RuntimeError("Optimization failure: ", optresult)
+
+        results = optresult.x if len(names) != 1 else [optresult.x.item()]
+        return {names[i]: results[i] for i in range(len(names))}, -optresult.fun
+
 
 def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
     """Evaluate an extended likelihood function
@@ -248,4 +359,3 @@ def arrays_to_grid(arrs):
     """Convert a list of n 1-dim arrays to an n+1-dim. array, where last dimension denotes coordinate values at point.
     """
     return np.stack(np.meshgrid(*arrs), axis=-1)
-

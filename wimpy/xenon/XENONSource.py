@@ -1,6 +1,7 @@
 import numpy as np
 
 from wimpy.source import MonteCarloSource
+from wimpy.utils import InterpolateAndExtrapolate1D
 
 from . import yields
 
@@ -10,15 +11,65 @@ class XENONSource(MonteCarloSource):
     recoil_type = 'nr'
     energy_distribution = None      # Histdd of rate /kg /keV /day.
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
+    def setup(self):
         # Compute the integrated event rate (in events / day)
         # This includes all events that produce a recoil; many will probably be out of range of the analysis space.
         h = self.energy_distribution
         if h is None:
             raise ValueError("You need to specify an energy spectrum for the source %s" % self.name)
         self.events_per_day = h.histogram.sum() * self.model.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
+
+        # The yield functions are all interpolated in log10(energy) space,
+        # Since that's where they are usually plotted in... and curve traced from.
+        # The yield points are clipped to 0... a few negative values slipped in while curve tracing, and
+        # I'm not going to edit all the leff files to remove them.
+        self.yield_functions = {k: InterpolateAndExtrapolate1D(np.log10(self.model.config[k][0]),
+                                                               np.clip(self.model.config[k][1], 0, float('inf')))
+                                for k in ('leff', 'qy', 'er_photon_yield')}
+
+    def yield_at(self, energies, recoil_type, quantum_type):
+        """Return the yield in quanta/kev for the given energies (numpy array, in keV),
+        recoil type (string, 'er' or 'nr') and quantum type (string, 'photon' or 'electron')"""
+        c = self.model.config
+        log10e = np.log10(energies)
+        if quantum_type not in ('electron', 'photon'):
+            raise ValueError("Invalid quantum type %s" % quantum_type)
+
+        if recoil_type == 'er':
+            """
+            In NEST the electronic recoil yield is calculated separately for each event,
+            based on details of the GEANT4 track structure (in particular the linear energy transfer).
+            Here I use an approximation, which is the "old approach" from the MC group, see
+                xenon:xenon1t:sim:notes:marco:t2-script-description#generation_of_light_and_charge
+            A fixed number of quanta (base_quanta_yield) is assumed to be generated. We get the photon yield in quanta,
+            then assume the rest turns into electrons.
+            """
+            if quantum_type == 'photon':
+                return self.yield_functions['er_photon_yield'](log10e)
+            else:
+                return c['base_quanta_yield'] - self.yield_functions['er_photon_yield'](log10e)
+
+        elif recoil_type == 'nr':
+            """
+            The NR electron yield is called Qy.
+            It is here assumed to be field-independent (but NEST 2013 fig 2 shows this is wrong...).
+
+            The NR photon yield is described by several empirical factors:
+                reference_gamma_photon_yield * efield_light_quenching_nr * leff
+
+            The first is just a reference scale, the second contains the electric field dependence,
+            the third (leff) the energy dependence.
+            In the future we may want to simplify this to just a single function
+            """
+            if quantum_type == 'photon':
+                return self.yield_functions['leff'](log10e) * \
+                       c['reference_gamma_photon_yield'] * c['nr_photon_yield_field_quenching']
+            else:
+                return self.yield_functions['qy'](log10e)
+
+        else:
+            raise RuntimeError("invalid recoil type %s" % recoil_type)
+
 
     def simulate(self, n_events):
         """Simulate n_events from this source."""
@@ -75,13 +126,10 @@ class XENONSource(MonteCarloSource):
         bad_events = n_quanta < 1
         n_quanta = np.clip(n_quanta, 1, float('inf'))
 
-        p_becomes_photon = \
-            d['energy'] * getattr(yields, self.recoil_type + '_photon_yield')(c, d['energy']) / n_quanta
+        p_becomes_photon = d['energy'] * self.yield_at(d['energy'], self.recoil_type, 'photon') / n_quanta
+        p_becomes_electron = d['energy'] * self.yield_at(d['energy'], self.recoil_type, 'electron') / n_quanta
 
         if self.recoil_type == 'er':
-            # No quanta get lost as heat:
-            p_becomes_electron = 1 - p_becomes_photon
-
             # Apply extra recombination fluctuation (NEST tritium paper / Atilla Dobii's thesis)
             p_becomes_electron = np.random.normal(p_becomes_electron,
                                                   p_becomes_electron * c['recombination_fluctuation'],
@@ -93,8 +141,6 @@ class XENONSource(MonteCarloSource):
         elif self.recoil_type == 'nr':
             # For NR some quanta get lost in heat.
             # Remove them and rescale the p's so we can use the same code as for ERs after this.
-            p_becomes_electron = \
-                d['energy'] * getattr(yields, self.recoil_type + '_electron_yield')(c, d['energy']) / n_quanta
             p_becomes_detectable = p_becomes_photon + p_becomes_electron
             if p_becomes_detectable.max() > 1:
                 raise ValueError("p_detected max is %s??!" % p_becomes_detectable.max())
@@ -154,3 +200,4 @@ class XENONSource(MonteCarloSource):
             d = d[d['s2'] > c['s2_area_threshold']]
 
         return d
+

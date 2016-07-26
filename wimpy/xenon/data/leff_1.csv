@@ -1,0 +1,23 @@
+# +1 sigma Leff from "Likelihood approach to the First Dark Matter Results of XENON100"
+# (I don't know who originally made it, maybe Guillaume, since the latest set of measurements these are based on come from his thesis?)
+# Curve traced from figure 1 by Jelle
+kevnr,leff
+1.00862,0.113247,
+4.45296,0.114286,
+5.02156,0.119481,
+5.68713,0.132468,
+7.42090,0.134026,
+9.07949,0.142338,
+10.7800,0.154805,
+13.4177,0.169870,
+16.2066,0.179221,
+18.8335,0.179740,
+23.1419,0.177662,
+29.4292,0.184935,
+36.0068,0.192727,
+44.0544,0.196883,
+55.7834,0.205714,
+63.9957,0.208312,
+78.6357,0.208831,
+86.0523,0.206234,
+98.7207,0.207273,
