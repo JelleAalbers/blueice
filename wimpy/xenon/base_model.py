@@ -23,16 +23,14 @@ THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe(
 config = dict(
     data_dirs = [os.path.join(THIS_DIR, 'data'), '.'],
     default_source_class = XENONSource,
-    analysis_space= (('cs1', tuple(np.linspace(0, 50, 50))),
-                     ('cs2', tuple(np.linspace(0, 7000, 50)))),
+    analysis_space= (('cs1', tuple(np.linspace(0, 70, 70))),
+                     ('cs2', tuple(np.linspace(0, 7000, 70)))),
     livetime_days=2*365.25,
     require_s1 = True,
     require_s2 = True,
     force_pdf_recalculation = False,
     pdf_sampling_multiplier = 1,
     pdf_sampling_batch_size = int(1e6),
-
-
     # Basic model info
     sources = [
         {'energy_distribution': 'uniform_er_bg.pkl',
@@ -85,7 +83,7 @@ config = dict(
     s1_relative_ly_map = 's1_rel_ly_pax5.1.pkl',
 
     # S1/S2 generation parameters
-    leff='leff_0.csv',
+    leff='leff_mcpaper_0.csv',
     qy='qy_bezrukov.csv',
     er_photon_yield='beta_photon_yield_nest_500V.csv',
     nr_photon_yield_field_quenching = 0.95,      # Monte Carlo note: add ref!
