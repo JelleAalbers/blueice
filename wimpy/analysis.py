@@ -110,15 +110,17 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
     return results,  -optresult.fun
 
 
-def plot_likelihood_ratio(lf, *space, vmax=10, **kwargs):
+def plot_likelihood_ratio(lf, *space, vmax=10, plot_kwargs=None, **kwargs):
     """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
     :param vmax: Limit for color bar (2d) or y axis (1d)
-    :param sigma: if True, plot asymptotic sigma level instead of log likelihood ratios
+    :param plot_kwargs: kwargs passed to plt.plot / plt.pcolormesh
     Further arguments are passed to lf
     :return: Nothing
     """
+    if plot_kwargs is None:
+        plot_kwargs = {}
     results = []
     label = "Log likelihood ratio"
     if len(space) == 1:
@@ -129,7 +131,7 @@ def plot_likelihood_ratio(lf, *space, vmax=10, **kwargs):
             results.append(lf(**lf_kwargs))
         results = np.array(results)
         results = results.max() - results
-        plt.plot(x, results)
+        plt.plot(x, results, **plot_kwargs)
         plt.ylim(0, vmax)
         plt.ylabel(label)
         plt.xlabel(dim)
@@ -147,7 +149,7 @@ def plot_likelihood_ratio(lf, *space, vmax=10, **kwargs):
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
         results = results.max() - results
-        plt.pcolormesh(z1, z2, results.T, vmax=vmax)
+        plt.pcolormesh(z1, z2, results.T, vmax=vmax, **plot_kwargs)
         plt.colorbar(label=label)
         plt.xlabel(dims[0])
         plt.ylabel(dims[1])
