@@ -181,9 +181,10 @@ class XENONSource(MonteCarloSource):
         # Get the corrected S1 and S2, assuming our posrec + correction map is perfect
         # Note this does NOT assume the analyst knows the absolute photon detection efficiency:
         # photon detection efficiency / p_photon_detected is just the relative light yield at the position.
+        # p_electron_detected is known exactly (since it only depends on the electron lifetime)
         s1_correction = c['ph_detection_efficiency'] / d['p_photon_detected']
         d['cs1'] = d['s1'] * s1_correction
-        d['cs2'] = d['s2']
+        d['cs2'] = d['s2'] / d['p_electron_detected']
 
         # Assuming we know the total number of photons detected (perfect hit counting),
         # give the ML estimate of the number of photons produced.

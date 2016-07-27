@@ -126,7 +126,7 @@ class Model(object):
         if ax is None:
             ax = plt.gca()
 
-        d = self.range_cut(d)
+        # d = self.range_cut(d)   # Not needed, simulate already does this
         for s_i, s in enumerate(self.sources):
             q = d[d['source'] == s_i]
             q_in_space = self.to_space(q)
