@@ -28,11 +28,7 @@ class Model(object):
         """
         self.config = deepcopy(config)
         self.config.update(kwargs)
-
-        # Compute a hash of the model config dictionary
-        # Notice we don't hash the sources key, so we can reuse source pdfs when we change other sources.
-        self.config['hash'] = utils.deterministic_hash({k: v for k, v in self.config.items()
-                                                        if k != 'sources'})
+        self.inert_config = deepcopy(self.config)       # Copy without file names -> loaded objects conversion
 
         # Load objects specified by file name into the config dictionary.
         utils.process_files_in_config(self.config, self.config['data_dirs'])

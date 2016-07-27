@@ -15,6 +15,7 @@ class Source(object):
     color = 'black'                 # Color to use in plots
     events_per_day = 0
     fraction_in_range = 0           # Fraction of simulated events that fall in analysis space.
+    ignore_settings = tuple()       # Settings from the model config that don't impact this source at all
 
     def __init__(self, model, config, *args, **kwargs):
         """
@@ -48,9 +49,11 @@ class MonteCarloSource(Source):
         """Prepares the PDF of this source for use.
         :param ipp_client: ipyparallel client to parallelize computation (optional)
         """
-        # Compute a hash of this source's config.
-        # Must do this before filename arguments are converted in Source.__init__.
-        self.hash = utils.deterministic_hash(config)
+        # Compute a hash to uniquely identify the relevant settings for this source.
+        # Must do this before filename arguments are converted to objects from those files in Source.__init__.
+        self.hash = utils.deterministic_hash({k: v for k, v in model.inert_config.items()
+                                              if k not in config['ignore_settings'] + ['sources']})
+        self.hash += utils.deterministic_hash(config)
 
         super().__init__(model, config, **kwargs)
         self.setup()
@@ -59,7 +62,7 @@ class MonteCarloSource(Source):
         cache_dir = self.model.config.get('pdf_cache_dir', 'pdf_cache')
         if not os.path.exists(cache_dir):
             os.makedirs(cache_dir)
-        cache_filename = os.path.join(cache_dir, self.model.config['hash'] + self.hash)
+        cache_filename = os.path.join(cache_dir, self.hash)
 
         # Have we computed the pdfs etc. for this configuration before? If so, load the information.
         if not self.model.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
@@ -76,11 +79,9 @@ class MonteCarloSource(Source):
                                                              'fraction_in_range', 'events_per_day')},
                                cache_filename)
 
-
     def setup(self):
         """Called just after converting config arguments, but before calculating pdf"""
         pass
-
 
     def compute_pdf(self, ipp_client=None):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)

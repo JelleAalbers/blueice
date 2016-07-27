@@ -19,6 +19,8 @@ from .XENONSource import XENONSource
 THIS_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 
 
+nr_ignore_settings = ['er_photon_yield', 'recombination_fluctuation']   # Ignore these if you're an NR source
+er_ignore_settings = ['leff', 'qy', 'nr_photon_yield_field_quenching']  # Ignore these if you're an ER source
 
 config = dict(
     data_dirs = [os.path.join(THIS_DIR, 'data'), '.'],
@@ -38,18 +40,21 @@ config = dict(
          'recoil_type': 'er',
          'name': 'er_bg',
          'n_events_for_pdf': 2e7,
+         'ignore_settings': er_ignore_settings,
          'label': 'ER Background'},
         {'energy_distribution': 'cnns.pkl',
          'color': 'orange',
          'recoil_type': 'nr',
          'name': 'cnns',
          'n_events_for_pdf': 5e6,
+         'ignore_settings': nr_ignore_settings,
          'label': 'CNNS'},
         {'energy_distribution': 'radiogenic_neutrons.pkl',
          'color': 'purple',
          'recoil_type': 'nr',
          'name': 'radiogenics',
          'n_events_for_pdf': 5e6,
+         'ignore_settings': nr_ignore_settings,
          'label': 'Radiogenic neutrons'},
         {'energy_distribution': 'wimp_50gev_1e-45.pkl',
          'color': 'red',
@@ -57,6 +62,7 @@ config = dict(
          'n_events_for_pdf': 5e6,
          'analysis_target': True,
          'recoil_type': 'nr',
+         'ignore_settings': nr_ignore_settings,
          'label': '50 GeV WIMP'}
     ],
 
@@ -97,3 +103,4 @@ config = dict(
     # If I don't misunderstand, they report an extra sigma/mu on the probability of a quantum to end up as an electron.
     recombination_fluctuation=0.067,
 )
+

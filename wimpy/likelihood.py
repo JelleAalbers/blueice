@@ -112,8 +112,9 @@ class LogLikelihood(object):
         self.is_data_set = True
 
     def add_rate_parameter(self, source_name, log_prior=None):
-        """Add a rate parameters to the likelihood function
+        """Add a rate parameters to the likelihood function.
         You don't actually have to use this unless you want to specify the prior.
+        "rate" means a rate of events per day in total (not just events that procuce signals in range!)
         :param source_name: Name of the source for which you want to vary the rate
         :param log_prior: prior logpdf function on rate
         """
@@ -178,8 +179,8 @@ class LogLikelihood(object):
                 if log_prior is not None:
                     result += log_prior(new_total_rate)
 
-                # However, the model provides and the likelihood expects the number of events IN RANGE /day as mu.
-                # So we rescale:
+                # However, the model / mus interpolator provides and the likelihood expects
+                # the number of events IN RANGE /day as mu. So we rescale:
                 mus[source_i] *= new_total_rate / self.base_model.get_source(source_name).events_per_day
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
@@ -217,6 +218,16 @@ class LogLikelihood(object):
 
         return RegularGridInterpolator(self.anchor_z_arrays, anchor_scores)
 
+    def get_bounds(self, parameter_name):
+        """Return bounds on the parameter parameter_name"""
+        if parameter_name in self.shape_parameters:
+            anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
+            return min(anchor_settings), max(anchor_settings)
+        elif parameter_name.endswith('_rate'):
+            return 0, float('inf')
+        else:
+            raise ValueError("Non-existing parameter %s" % parameter_name)
+
     # Convenience function for uncertainties.
     # Adding more general priors is the user's responsibility
     # (either provide prior argument to add_x_parameter, or wrap the loglikelihood function)
@@ -237,116 +248,6 @@ class LogLikelihood(object):
         self.add_shape_parameter(setting_name,
                                  anchors=mu + np.array(anchor_zs) * std,
                                  log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
-
-    def get_bounds(self, parameter_name):
-        """Return bounds on the parameter parameter_name"""
-        if parameter_name in self.shape_parameters:
-            anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
-            return min(anchor_settings), max(anchor_settings)
-        elif parameter_name.endswith('_rate'):
-            return 0, float('inf')
-        else:
-            raise ValueError("Non-existing parameter %s" % parameter_name)
-
-    def make_objective(self, guess=None, minus=True, rates_in_log_space=False, **kwargs):
-        """Return convenient stuff for feeding this likelihood fucntion to an optimizer.
-        :param **kwargs: fixed values for certain parameters. These will not be fitted.
-        :param guess: dictionary with guesses for the remaining ("floating") parameters
-        If you don't supply a guess, the default / base model value will be used for rate parameters,
-        and 0 for shape parameters (fixme: use base model value, even if has been turned into monster).
-
-        :param minus: f provides the minimum of the likelihood function instead
-
-        Returns f, guesses, names:
-          - f: function which takes a single arraylike argument with only the floating parameters
-          - names: list, floating parameter names in correct order
-          - guesses: array of guesses in order taken by f
-          - bounds: list of tuples of bounds for floating parameters. (None, None) if there are no bounds for a param.
-        """
-        if guess is None:
-            guess = {}
-        names = []
-        bounds = []
-        guesses = []
-
-        # Which rate parameters should we fit?
-        for p in self.rate_parameters.keys():
-            if p not in kwargs:
-                # Default is the number of events per day total (not just in range).
-                # This is what likelihood function expects, it knows how to deal with it.
-                g = guess.get('%s_rate' % p, self.base_model.get_source(p).events_per_day)
-                names.append('%s_rate' % p)
-                if rates_in_log_space:
-                    guesses.append(np.log10(g))
-                    bounds.append((self.config.get('minimum_log10_rate', -6), None))
-                else:
-                    guesses.append(g)
-                    bounds.append((0, None))
-
-        # Which shape parameters should we fit?
-        for p in list(self.shape_parameters.keys()):
-            if p not in kwargs:
-                names.append(p)
-                bounds.append(self.get_bounds(p))
-                guesses.append(guess.get(p, 0))
-
-        # Minimize the - log likelihood
-        # Uses kwargs, sign, and self from external scope. So don't try to pickle it...
-        sign = -1 if minus else 1
-        def objective(args):
-            # Get the arguments from args, then fill in the ones already fixed in outer kwargs
-            call_kwargs = {}
-            for i, k in enumerate(names):
-                if rates_in_log_space and k.endswith('_rate'):
-                    # The minimizer provides on the log10 of the rate. Convert it back to a normal rate for the
-                    # likelihood function
-                    call_kwargs[k] = 10**args[i]
-                else:
-                    call_kwargs[k] = args[i]
-            call_kwargs.update(kwargs)
-            return self(**call_kwargs) * sign
-
-        return objective, names, np.array(guesses), bounds
-
-    # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
-    def bestfit(self, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
-        """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
-        Optimization is performed with the scipy minimizer
-        Returns {param: best fit}, minimum loglikelihood.
-        Optimization is done with scipy.optimize minimize.
-        :param minimize_kwargs: dictionary with optimz to minimize
-        """
-        if minimize_kwargs is None:
-            minimize_kwargs = {}
-        # The default method (whatever it is -- it isn't clear) seems to fail immediately most of the time
-        # L-BFGS-B seems fast but also fails often..? Nelder-Mead is our last resort but really really slow
-        # minimize_kwargs.setdefault('method', 'Nelder-Mead')
-
-        f, names, guess, bounds = self.make_objective(minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
-
-        optresult = minimize(f, guess,
-                             bounds=bounds,
-                             **minimize_kwargs)
-
-        if not optresult.success:
-            # Try again with a more robust, but slower method
-            optresult = minimize(f, guess,
-                                 bounds=bounds,
-                                 method='Nelder-Mead',
-                                 **minimize_kwargs)
-            if not optresult.success:
-                raise RuntimeError("Optimization failure: ", optresult)
-
-        optimum = optresult.x if len(names) != 1 else [optresult.x.item()]
-
-        results = {}
-        for i, name in enumerate(names):
-            if rates_in_log_space and name.endswith('_rate'):
-                # The minimizer was fooled into seeing the log10 of the rate, convert it back for the user
-                results[name] = 10**optimum[i]
-            else:
-                results[name] = optimum[i]
-        return results,  -optresult.fun
 
 
 def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
