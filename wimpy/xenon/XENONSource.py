@@ -3,8 +3,6 @@ import numpy as np
 from wimpy.source import MonteCarloSource
 from wimpy.utils import InterpolateAndExtrapolate1D
 
-from . import yields
-
 class XENONSource(MonteCarloSource):
     """A Source in a XENON-style experiment"""
     spatial_distribution = 'uniform'
@@ -69,7 +67,6 @@ class XENONSource(MonteCarloSource):
 
         else:
             raise RuntimeError("invalid recoil type %s" % recoil_type)
-
 
     def simulate(self, n_events):
         """Simulate n_events from this source."""
@@ -201,4 +198,3 @@ class XENONSource(MonteCarloSource):
             d = d[d['s2'] > c['s2_area_threshold']]
 
         return d
-

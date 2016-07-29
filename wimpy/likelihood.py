@@ -13,9 +13,7 @@ from .model import Model
 class LogLikelihood(object):
     """Extended log likelihood function with several rate and/or shape parameters
 
-    Does NOT apply "priors" / penalty terms for subsidiary measurments
-
-    self.config
+    likelihood_config options:
         unphysical_behaviour
         outlier_likelihood
     """

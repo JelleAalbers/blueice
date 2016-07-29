@@ -1,4 +1,5 @@
-"""
+"""This code is no longer used directly.
+
 This file contains code necessary to create WIMP energy spectra.
 Use the wimp_recoil_spectrum function defined at the end, which gives the wimp spectrum (in rate /kg /day /keV)
 for Xenon detectors using the standard Halo model.
