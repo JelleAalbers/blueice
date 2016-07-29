@@ -1,12 +1,13 @@
 Unnamed statistical inference package
-==============================================================================
+=====================================
 Jelle Aalbers, 2016
 
 Source code: `https://github.com/XENON1T/wimpy`
 
 Documentation:
-  * `This note <https://xecluster.lngs.infn.it/dokuwiki/doku.php?id=xenon:xenon1t:aalbers:statspackage_architecture>`_ on the XENON wiki.
-  * You can also check the docstrings and code comments.
+
+- `This note <https://xecluster.lngs.infn.it/dokuwiki/doku.php?id=xenon:xenon1t:aalbers:statspackage_architecture>`_ on the XENON wiki.
+- You can also check the docstrings and code comments.
 
 
 About
@@ -21,7 +22,7 @@ The ``xenon`` folder contains settings and configuration particular to the XENON
 - Andrew's maximum-gap limit setting code, used for the XENON100 max-gap cross checks.
 - Chris' wimpstat repository, used for the XENON100 S2-only limit setting (but no longer available?)
 - NEST: not directly, but since this is currently the best xenon TPC code out there, the physics model used here 
-- Several of the Monte Carlo group's excellent material on this topic, in particular the `XENON1T Monte Carlo paper <http://arxiv.org/abs/1512.07501>`_ and the 'notes linked here <https://xecluster.lngs.infn.it/dokuwiki/doku.php?id=xenon:xenon1t:org:papers:xe1t_sensitivity>`_. 
+- Several of the Monte Carlo group's excellent material on this topic, in particular the `XENON1T Monte Carlo paper <http://arxiv.org/abs/1512.07501>`_ and the `notes linked here <https://xecluster.lngs.infn.it/dokuwiki/doku.php?id=xenon:xenon1t:org:papers:xe1t_sensitivity>`_. 
 
 The default model includes lots of information I obtained by curve-tracing plots or even just constructing some function that looked like what I saw in an image. Just saying...
 
