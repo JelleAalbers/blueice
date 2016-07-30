@@ -79,7 +79,7 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
 ##
 # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
 ##
-def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
+def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=True, **kwargs):
     """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
     Returns {param: best fit}, minimum loglikelihood.
 
@@ -136,10 +136,12 @@ def one_param_interval(lf, target, bound, confidence_level=0.9, kind='upper', be
 
     if kind == 'central':
         confidence_level = 1 - (1 - confidence_level)/2
-    critical_chi2 = stats.chi2(1).ppf(confidence_level)
+    # Note stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2 CL - 1)))
+    # So stats.norm.ppf(0.9)**2 = stats.chi2(1).ppf(0.8)
+    critical_value = stats.norm.ppf(confidence_level)**2
 
     def t(hypothesis):
-        """(profile) likelihood ratio test statistic, with critical_chi2 subtracted"""
+        """(profile) likelihood ratio test statistic, with critical_value subtracted"""
         if kind == 'upper' and hypothesis <= global_best:
             result = 0
         elif kind == 'lower' and hypothesis >= global_best:
@@ -151,7 +153,7 @@ def one_param_interval(lf, target, bound, confidence_level=0.9, kind='upper', be
             fitresult, ll = bestfit_routine(lf, **lf_kwargs)
             result = 2*(max_loglikelihood - ll)
 
-        return result - critical_chi2
+        return result - critical_value
 
     if kind == 'central':
         return brentq(t, bound[0], global_best), brentq(t, global_best, bound[1])
