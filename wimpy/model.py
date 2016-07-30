@@ -1,17 +1,10 @@
 import collections
 from copy import deepcopy
-import re
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 from . import utils
-
-# Hashing temporariliy disabled
-# until I figure out how to deal with 'difficult stuff' in config (e.g. functions...)
-# and how to keep track of source spec...
-# import json
-# from hashlib import sha1
 
 
 class Model(object):

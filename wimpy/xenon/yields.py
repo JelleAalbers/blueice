@@ -1,4 +1,6 @@
-"""Yields information
+"""This code is no longer used directly.
+
+Yields information
 
 This defines [er|nr]_[photon|electron]_yield functions which give
 the [photon|electron] yield per energy in [pe|electrons]/keV.
