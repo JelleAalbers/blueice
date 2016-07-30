@@ -120,7 +120,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=True, **kwargs):
     return results,  -optresult.fun
 
 
-def one_param_interval(lf, target, bound, confidence_level=0.9, kind='upper', bestfit_routine=bestfit_scipy, **kwargs):
+def one_parameter_interval(lf, target, bound, confidence_level=0.9, kind='upper', bestfit_routine=bestfit_scipy, **kwargs):
     """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
     This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
     target: parameter of lf to constrain
