@@ -35,28 +35,28 @@ config = dict(
     pdf_sampling_batch_size = int(1e6),
     # Basic model info
     sources = [
-        {'energy_distribution': 'uniform_er_bg.pkl',
+        {'energy_distribution': 'er_bg.csv',
          'color': 'blue',
          'recoil_type': 'er',
          'name': 'er_bg',
          'n_events_for_pdf': 2e7,
          'ignore_settings': er_ignore_settings,
          'label': 'ER Background'},
-        {'energy_distribution': 'cnns.pkl',
+        {'energy_distribution': 'cnns.csv',
          'color': 'orange',
          'recoil_type': 'nr',
          'name': 'cnns',
          'n_events_for_pdf': 5e6,
          'ignore_settings': nr_ignore_settings,
          'label': 'CNNS'},
-        {'energy_distribution': 'radiogenic_neutrons.pkl',
+        {'energy_distribution': 'radiogenic_neutrons.csv',
          'color': 'purple',
          'recoil_type': 'nr',
          'name': 'radiogenics',
          'n_events_for_pdf': 5e6,
          'ignore_settings': nr_ignore_settings,
          'label': 'Radiogenic neutrons'},
-        {'energy_distribution': 'wimp_50gev_1e-45.pkl',
+        {'energy_distribution': 'wimp_50gev_1e-45cm2.csv',
          'color': 'red',
          'name': 'wimp_50gev',
          'n_events_for_pdf': 5e6,
@@ -102,5 +102,11 @@ config = dict(
     # Recombination fluctuation, from LUX tritium paper (p.9) / Atilla Dobii's thesis
     # If I don't misunderstand, they report an extra sigma/mu on the probability of a quantum to end up as an electron.
     recombination_fluctuation=0.067,
+    show_pdf_sampling_progress=True,
+
+    # Settings excluded from config hashing for PDF caching. 'sources' should definitely be in here.
+    nohash_settings = ['show_pdf_sampling_progress',
+                       'sources', 'nohash_settings',
+                       'data_dirs', 'force_pdf_recalculation']
 )
 

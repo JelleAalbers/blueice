@@ -77,6 +77,7 @@ class LogLikelihood(object):
 
             # Construct the config for this model
             config = deepcopy(self.pdf_base_config)
+            config['show_pdf_sampling_progress'] = False
             for i, (setting_name, (anchors, _)) in enumerate(self.shape_parameters.items()):
                 config[setting_name] = anchors[zs[i]]
 
@@ -189,7 +190,8 @@ class LogLikelihood(object):
                 return -float('inf')
 
         # Get the loglikelihood. At last!
-        return extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
+        result += extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
+        return result
 
     def anchor_grid_iterator(self):
         """Iterates over the anchor grid, yielding index, z-values"""

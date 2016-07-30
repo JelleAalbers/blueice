@@ -3,12 +3,16 @@ If you want to analyze with your own tools, you can just ignore these,
 only make_objective is of general use (for wrapping optimizers).
 """
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, brentq
+from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+class NoOpimizationNecessary(Exception):
+    pass
 
-def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
+
+def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs):
     """Return convenient stuff for feeding the LogLikelihood lf to an optimizer.
     :param **kwargs: fixed values for certain parameters. These will not be fitted.
     :param guess: dictionary with guesses for the remaining ("floating") parameters
@@ -32,7 +36,7 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
 
     # Which rate parameters should we fit?
     for p in lf.rate_parameters.keys():
-        if p not in kwargs:
+        if p + '_rate' not in kwargs:
             # Default is the number of events per day total (not just in range).
             # This is what likelihood function expects, it knows how to deal with it.
             g = guess.get('%s_rate' % p, lf.base_model.get_source(p).events_per_day)
@@ -50,6 +54,9 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
             names.append(p)
             bounds.append(lf.get_bounds(p))
             guesses.append(guess.get(p, 0))
+
+    if not len(names):
+        raise NoOpimizationNecessary("There are no parameters to fit, no optimization is necessary")
 
     # Minimize the - log likelihood
     # Uses kwargs, sign, and self from external scope. So don't try to pickle it...
@@ -83,7 +90,10 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
     if minimize_kwargs is None:
         minimize_kwargs = {}
 
-    f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+    try:
+        f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+    except NoOpimizationNecessary:
+        return {}, lf(**kwargs)
 
     optresult = minimize(f, guess,
                          bounds=bounds,
@@ -110,13 +120,54 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
     return results,  -optresult.fun
 
 
-def plot_likelihood_ratio(lf, *space, vmax=10, plot_kwargs=None, **kwargs):
+def one_param_interval(lf, target, bound, confidence_level=0.9, kind='upper', bestfit_routine=bestfit_scipy, **kwargs):
+    """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
+    This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
+    target: parameter of lf to constrain
+    bound: bound(s) for the line search. For upper and lower: single value, for central: 2-tuple.
+    kwargs: dictionary with arguments to bestfit
+    """
+    if target is None:
+        target = lf.source_list[-1] + '_rate'
+
+    # Find the likelihood of the global best fit (denominator of likelihood ratio)
+    result, max_loglikelihood = bestfit_routine(lf, **kwargs)
+    global_best = result[target]
+
+    if kind == 'central':
+        confidence_level = 1 - (1 - confidence_level)/2
+    critical_chi2 = stats.chi2(1).ppf(confidence_level)
+
+    def t(hypothesis):
+        """(profile) likelihood ratio test statistic, with critical_chi2 subtracted"""
+        if kind == 'upper' and hypothesis <= global_best:
+            result = 0
+        elif kind == 'lower' and hypothesis >= global_best:
+            result = 0
+        else:
+            # Find the best fit assuming the hypothesis (numerator of likelihood ratio)
+            lf_kwargs = {target: hypothesis}
+            lf_kwargs.update(kwargs)
+            fitresult, ll = bestfit_routine(lf, **lf_kwargs)
+            result = 2*(max_loglikelihood - ll)
+
+        return result - critical_chi2
+
+    if kind == 'central':
+        return brentq(t, bound[0], global_best), brentq(t, global_best, bound[1])
+    elif kind == 'lower':
+        return brentq(t, bound, global_best)
+    elif kind == 'upper':
+        return brentq(t, global_best, bound)
+
+
+def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
     """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
     :param vmax: Limit for color bar (2d) or y axis (1d)
     :param plot_kwargs: kwargs passed to plt.plot / plt.pcolormesh
-    Further arguments are passed to lf
+    Further arguments are passed to lf, arguments not passed are fitted at each point.
     :return: Nothing
     """
     if plot_kwargs is None:
@@ -128,7 +179,7 @@ def plot_likelihood_ratio(lf, *space, vmax=10, plot_kwargs=None, **kwargs):
         for q in x:
             lf_kwargs = {dim:q}
             lf_kwargs.update(kwargs)
-            results.append(lf(**lf_kwargs))
+            results.append(bestfit_scipy(lf, **lf_kwargs)[1])
         results = np.array(results)
         results = results.max() - results
         plt.plot(x, results, **plot_kwargs)
@@ -145,7 +196,7 @@ def plot_likelihood_ratio(lf, *space, vmax=10, plot_kwargs=None, **kwargs):
             for z2 in y:
                 lf_kwargs = {dims[0]:z1, dims[1]:z2}
                 lf_kwargs.update(kwargs)
-                results[-1].append(lf(**lf_kwargs))
+                results[-1].append(bestfit_scipy(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
         results = results.max() - results

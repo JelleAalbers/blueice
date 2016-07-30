@@ -2,6 +2,7 @@ import numpy as np
 
 from wimpy.source import MonteCarloSource
 from wimpy.utils import InterpolateAndExtrapolate1D
+from multihist import Hist1d
 
 class XENONSource(MonteCarloSource):
     """A Source in a XENON-style experiment"""
@@ -10,17 +11,20 @@ class XENONSource(MonteCarloSource):
     energy_distribution = None      # Histdd of rate /kg /keV /day.
 
     def setup(self):
+        # Turn the energy spectrum from two arrays into a histogram, so we can sample it.
+        # We average the rates in between the points provided
+        es, rates = self.energy_distribution
+        self.energy_distribution = Hist1d(bins=es)
+        self.energy_distribution.histogram = 0.5 * (rates[1:] + rates[:-1])
+
         # Compute the integrated event rate (in events / day)
         # This includes all events that produce a recoil; many will probably be out of range of the analysis space.
         h = self.energy_distribution
-        if h is None:
-            raise ValueError("You need to specify an energy spectrum for the source %s" % self.name)
         self.events_per_day = h.histogram.sum() * self.model.config['fiducial_mass'] * (h.bin_edges[1] - h.bin_edges[0])
 
         # The yield functions are all interpolated in log10(energy) space,
         # Since that's where they are usually plotted in... and curve traced from.
-        # The yield points are clipped to 0... a few negative values slipped in while curve tracing, and
-        # I'm not going to edit all the leff files to remove them.
+        # The yield points are clipped to 0: a few negative values may have slipped in while curve tracing.
         self.yield_functions = {k: InterpolateAndExtrapolate1D(np.log10(self.model.config[k][0]),
                                                                np.clip(self.model.config[k][1], 0, float('inf')))
                                 for k in ('leff', 'qy', 'er_photon_yield')}
