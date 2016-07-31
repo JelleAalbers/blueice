@@ -9,11 +9,10 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = open('requirements.txt').read().splitlines()
-# test_requirements = requirements  # + ['flake8', 'tox', 'coverage','bumpversion']
 
 setup(name='wimpy',
-      version='0.1',
-      description='Simple XENON1T S1/S2 response Monte Carlo',
+      version='0.1.0',
+      description='Unnamed Statistical Inference Support / Likelihood Creation package',
       long_description=readme + '\n\n' + history,
       author='Jelle Aalbers',
       author_email='j.aalbers@uva.nl',
@@ -32,6 +31,4 @@ setup(name='wimpy',
           'Programming Language :: Python :: 3.3',
           'Programming Language :: Python :: 3.4',
       ],
-      # test_suite='tests',
-      # tests_require=test_requirements
 )
