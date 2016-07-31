@@ -232,7 +232,6 @@ class LogLikelihood(object):
     # Convenience function for uncertainties.
     # Adding more general priors is the user's responsibility
     # (either provide prior argument to add_x_parameter, or wrap the loglikelihood function)
-    # There is no corresponding one for shape uncertainties, since they can have non-numerical setting types
     def add_rate_uncertainty(self, source_name, fractional_uncertainty):
         """Adds a rate parameter to the likelihood function, with Gaussian prior around the default value"""
         mu = self.base_model.get_source(source_name).events_per_day
