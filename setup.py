@@ -11,7 +11,7 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 requirements = open('requirements.txt').read().splitlines()
 
 setup(name='wimpy',
-      version='0.1.0',
+      version='0.2.0',
       description='Unnamed Statistical Inference Support / Likelihood Creation package',
       long_description=readme + '\n\n' + history,
       author='Jelle Aalbers',
