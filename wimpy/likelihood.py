@@ -34,7 +34,8 @@ class LogLikelihood(object):
         self.base_model = None          # Base model: no variations of any settings
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior).
-                                                 # where anchors is a dictionary: representative value -> actual setting
+                                                 # where anchors is dict: representative value -> actual setting
+                                                 # We'll take care of sorting the keys in self.prepare()
         self.source_list = []
         self.is_prepared = False
         self.is_data_set = False
@@ -268,4 +269,4 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
 def arrays_to_grid(arrs):
     """Convert a list of n 1-dim arrays to an n+1-dim. array, where last dimension denotes coordinate values at point.
     """
-    return np.stack(np.meshgrid(*arrs), axis=-1)
+    return np.stack(np.meshgrid(*arrs, indexing='ij'), axis=-1)
