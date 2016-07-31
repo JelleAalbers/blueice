@@ -7,7 +7,8 @@ Source code: `https://github.com/XENON1T/wimpy`
 Documentation:
 
 - `This note <https://xecluster.lngs.infn.it/dokuwiki/doku.php?id=xenon:xenon1t:aalbers:statspackage_architecture>`_ on the XENON wiki.
-- You can also check the docstrings and code comments.
+- `These example notebooks <https://github.com/XENON1T/wimpy/tree/master/notebooks>`_.
+- You can of course also look at the docstrings and code comments.
 
 
 About
