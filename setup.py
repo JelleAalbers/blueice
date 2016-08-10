@@ -10,19 +10,19 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = open('requirements.txt').read().splitlines()
 
-setup(name='wimpy',
+setup(name='blipflip',
       version='0.2.0',
-      description='Unnamed Statistical Inference Support / Likelihood Creation package',
+      description='Build Likelihoods from Interpolated Pdfs For LImit settting and other Parametric inference',
       long_description=readme + '\n\n' + history,
       author='Jelle Aalbers',
       author_email='j.aalbers@uva.nl',
-      url='https://github.com/XENON1T/wimpy',
-      packages=['wimpy', 'wimpy.xenon', 'wimpy.xenon.data'],
-      package_dir={'wimpy': 'wimpy'},
+      url='https://github.com/JelleAalbers/blipflip',
+      packages=['blipflip'],
+      package_dir={'blipflip': 'blipflip'},
       install_requires=requirements,
       license="MIT",
       zip_safe=False,
-      keywords='wimpy',
+      keywords='blipflip',
       classifiers=[
           'Intended Audience :: Developers',
           'License :: OSI Approved :: MIT License',
