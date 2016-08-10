@@ -1,8 +1,8 @@
-blipflip: Build Likelihoods from Interpolated Pdfs For LImit settting and other Parametric inference
-====================================================================================================
+blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo generated Events
+==========================================================================================
 Jelle Aalbers, 2016
 
-Source code: `https://github.com/JelleAalbers/blipflip`
+Source code: `https://github.com/JelleAalbers/blueice`
 
 
 About

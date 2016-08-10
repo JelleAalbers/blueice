@@ -10,19 +10,19 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = open('requirements.txt').read().splitlines()
 
-setup(name='blipflip',
+setup(name='blueice',
       version='0.2.0',
-      description='Build Likelihoods from Interpolated Pdfs For LImit settting and other Parametric inference',
+      description='Build Likelihoods Using Efficient Interpolations from monte-Carlo generated Events',
       long_description=readme + '\n\n' + history,
       author='Jelle Aalbers',
       author_email='j.aalbers@uva.nl',
-      url='https://github.com/JelleAalbers/blipflip',
-      packages=['blipflip'],
-      package_dir={'blipflip': 'blipflip'},
+      url='https://github.com/JelleAalbers/blueice',
+      packages=['blueice'],
+      package_dir={'blueice': 'blueice'},
       install_requires=requirements,
       license="MIT",
       zip_safe=False,
-      keywords='blipflip',
+      keywords='blueice',
       classifiers=[
           'Intended Audience :: Developers',
           'License :: OSI Approved :: MIT License',
