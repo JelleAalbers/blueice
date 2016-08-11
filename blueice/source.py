@@ -2,6 +2,7 @@ import os
 import numpy as np
 from multihist import Histdd
 from tqdm import tqdm
+from functools import reduce
 
 from . import utils
 
@@ -124,10 +125,8 @@ class MonteCarloSource(Source):
         #  - the bin sizes (particularly relevant for non-uniform bins!)
         self.pdf_histogram = mh.similar_blank_hist()
         self.pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
-        if len(bins) == 1:
-            self.pdf_histogram.histogram /= np.diff(bins[0])
-        else:
-            self.pdf_histogram.histogram /= np.outer(*[np.diff(bins[i]) for i in range(len(bins))])
+        # For reduce trick, see http://stackoverflow.com/questions/17138393
+        self.pdf_histogram.histogram /= reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
 
         # Estimate the MC statistical error. Not used for anything, but good to inspect.
         self.pdf_errors = self.pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
