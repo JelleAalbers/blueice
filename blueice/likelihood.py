@@ -16,6 +16,8 @@ class LogLikelihood(object):
     likelihood_config options:
         unphysical_behaviour
         outlier_likelihood
+        parallelize_models: True (default) or False
+        block_during_paralellization: True or False (default)
     """
     def __init__(self, pdf_base_config, likelihood_config=None, ipp_client=None, **kwargs):
         """
@@ -57,11 +59,9 @@ class LogLikelihood(object):
         self.base_model = Model(self.pdf_base_config, ipp_client=ipp_client)
         self.source_list = [s.name for s in self.base_model.sources]
 
-    def prepare(self, *args, **kwargs):
+    def prepare(self, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
         This will  compute the models for each shape parameters anchor value combination.
-        Any arguments are passed through to Model initialization.
-        # TODO: quiet Model's progress bar
         """
         if not len(self.shape_parameters):
             return
@@ -71,23 +71,39 @@ class LogLikelihood(object):
                                 for setting_name, (anchors, _) in self.shape_parameters.items()]
         self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
 
-        # Compute the anchor models
-        for _, zs in tqdm(self.anchor_grid_iterator(),
-                          total=np.product(self.anchor_z_grid.shape[:-1]),
-                          desc="Computing models for shape parameter anchor points"):
-
+        # Create the configs for each model
+        zs_list = [zs for _, zs in self.anchor_grid_iterator()]
+        configs = []
+        for zs in zs_list:
             # Construct the config for this model
             config = deepcopy(self.pdf_base_config)
             config['show_pdf_sampling_progress'] = False
             for i, (setting_name, (anchors, _)) in enumerate(self.shape_parameters.items()):
                 config[setting_name] = anchors[zs[i]]
+            configs.append(config)
 
-            # Build the model
-            model = Model(config, *args, **kwargs)
-            self.anchor_models[tuple(zs)] = model
+        if ipp_client is not None:
+            # Compute the PDFs in parallel
+            # Fully fledged blueice Models don't pickle, so we have to construct them again later in the main process
+            # (but then we can just grab their PDFs from cache, so it's quick)
 
-            # Get the source list (from any one model would do)
-            self.source_list = [s.name for s in model.sources]
+            def compute_model(conf):
+                Model(conf)
+                return None
+
+            asyncresult = ipp_client.load_balanced_view().map(compute_model, configs,
+                                                              ordered=False,
+                                                              block=self.config.get('block_during_paralellization',
+                                                                                    False))
+            for _ in tqdm(asyncresult,
+                          desc="Computing models for shape parameter anchor points in parallel",
+                          total=len(configs)):
+                pass
+
+        for zs, conf in tqdm(zip(zs_list, configs),
+                             total=len(configs),
+                             desc="Computing models for shape parameter anchor points"):
+            self.anchor_models[zs] = Model(conf)
 
         # Build the interpolator for the rates of each source
         self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
