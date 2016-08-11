@@ -2,7 +2,7 @@
 0.3.0 (2016/08/10)
 ------------------
 
- * Renamed to blipflip, XENON stuff renamed to laidbax
+ * Renamed to blueice, XENON stuff renamed to laidbax
 
 ------------------
 0.2.0 (2016/07/31)
