@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from scipy import stats
 from tqdm import tqdm
 
-from .model import Model
+from .model import Model, create_models_in_parallel
 
 
 class LogLikelihood(object):
@@ -82,25 +82,9 @@ class LogLikelihood(object):
                 config[setting_name] = anchors[zs[i]]
             configs.append(config)
 
-        if ipp_client is not None:
-            # Compute the PDFs in parallel
-            # Fully fledged blueice Models don't pickle, so we have to construct them again later in the main process
-            # (but then we can just grab their PDFs from cache, so it's quick)
+        models = create_models_in_parallel(configs, ipp_client)
 
-            def compute_model(conf):
-                Model(conf)
-                return None
-
-            asyncresult = ipp_client.load_balanced_view().map(compute_model, configs,
-                                                              ordered=False,
-                                                              block=self.config.get('block_during_paralellization',
-                                                                                    False))
-            for _ in tqdm(asyncresult,
-                          desc="Computing models for shape parameter anchor points in parallel",
-                          total=len(configs)):
-                pass
-
-        for zs, conf in tqdm(zip(zs_list, configs),
+        for zs, model in tqdm(zip(zs_list, models),
                              total=len(configs),
                              desc="Computing models for shape parameter anchor points"):
             self.anchor_models[zs] = Model(conf)
