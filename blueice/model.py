@@ -1,5 +1,6 @@
 import collections
 from copy import deepcopy
+from tqdm import tqdm
 
 import numpy as np
 import matplotlib.pyplot as plt
