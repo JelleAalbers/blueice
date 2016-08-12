@@ -82,12 +82,13 @@ class LogLikelihood(object):
                 config[setting_name] = anchors[zs[i]]
             configs.append(config)
 
-        models = create_models_in_parallel(configs, ipp_client)
+        models = create_models_in_parallel(configs, ipp_client,
+                                           block=self.config.get('block_during_paralellization', False))
 
         for zs, model in tqdm(zip(zs_list, models),
                              total=len(configs),
                              desc="Computing models for shape parameter anchor points"):
-            self.anchor_models[zs] = Model(conf)
+            self.anchor_models[zs] = model
 
         # Build the interpolator for the rates of each source
         self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
