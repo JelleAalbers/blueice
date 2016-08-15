@@ -81,7 +81,7 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
 ##
 def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=True, **kwargs):
     """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
-    Returns {param: best fit}, minimum loglikelihood.
+    Returns {param: best fit}, maximum loglikelihood.
 
     Optimization is performed with the scipy minimizer
     :param minimize_kwargs: dictionary with optimz to minimize

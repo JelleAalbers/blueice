@@ -45,6 +45,8 @@ class MonteCarloSource(Source):
     pdf_errors = None               # Histdd
     from_cache = False              # If True, the pdf was loaded from cache instead of computed on init
     hash = None
+    pdf_interpolation_method = 'linear'
+    pdf_interpolator = None         # scipy.interpolate.RegularGridInterpolator
 
     def __init__(self, model, config, ipp_client=None, **kwargs):
         """Prepares the PDF of this source for use.
@@ -70,9 +72,13 @@ class MonteCarloSource(Source):
             self.from_cache = True
             for k, v in utils.load_pickle(cache_filename).items():
                 setattr(self, k, v)
-            return
+        else:
+            self.compute_pdf(ipp_client)
 
-        self.compute_pdf(ipp_client)
+        # Construct a linear interpolator between the histogram bins
+        from scipy.interpolate import RegularGridInterpolator
+        self.pdf_interpolator = RegularGridInterpolator(self.pdf_histogram.bin_centers(),
+                                                        self.pdf_histogram.histogram)
 
         # Should we save the source PDFs, rate, etc. for later use?
         if not self.from_cache and self.model.config.get('save_pdfs', True):
@@ -119,13 +125,14 @@ class MonteCarloSource(Source):
 
         self.fraction_in_range = mh.n / n_events
 
-        # Convert the histogram to a PDF
+        # Convert the histogram to a PDF estimate
         # This means we have to divide by
         #  - the number of events histogrammed
         #  - the bin sizes (particularly relevant for non-uniform bins!)
         self.pdf_histogram = mh.similar_blank_hist()
         self.pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
-        # For reduce trick, see http://stackoverflow.com/questions/17138393
+        # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
+        # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393
         self.pdf_histogram.histogram /= reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
 
         # Estimate the MC statistical error. Not used for anything, but good to inspect.
@@ -136,4 +143,19 @@ class MonteCarloSource(Source):
         raise NotImplementedError
 
     def pdf(self, *args):
-        return self.pdf_histogram.lookup(*args)
+        if self.pdf_interpolation_method == 'linear':
+            # Clip the data to lay inside the bin centers region.
+            # Assuming you've cut the data to the analysis space first (which you should have!)
+            # this is equivalent to assuming constant density in the outer half of boundary bins
+            clipped_data = []
+            for dim_i, x in enumerate(args):
+                bcs = self.pdf_histogram.bin_centers(dim_i)
+                clipped_data.append(np.clip(x, bcs.min(), bcs.max()))
+
+            return self.pdf_interpolator(np.transpose(clipped_data))
+
+        elif self.pdf_interpolation_method == 'piecewise':
+            return self.pdf_histogram.lookup(*args)
+
+        else:
+            raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
