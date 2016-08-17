@@ -82,7 +82,7 @@ class LogLikelihood(object):
             self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
             zs_list = [zs for _, zs in self.anchor_grid_iterator()]
 
-            self.upsample(zs_list, ipp_client=None)
+            self.upsample(zs_list, ipp_client=ipp_client)
 
         else:
             # Get the bounds needed to scale the zs
