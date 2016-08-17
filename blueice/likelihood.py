@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from scipy.optimize import minimize
+from scipy.spatial import KDTree
 from scipy import stats
 from tqdm import tqdm
 
@@ -31,7 +31,7 @@ class LogLikelihood(object):
         if likelihood_config is None:
             likelihood_config = {}
         self.config = likelihood_config
-        self.itp_mode = self.config.get('interpolation_mode', 'regular')
+        self.itp_mode = self.config.get('interpolation_mode', 'grid')
         assert self.itp_mode in ('grid', 'radial')
 
         self.pdf_base_config = pdf_base_config
@@ -45,23 +45,30 @@ class LogLikelihood(object):
         self.is_prepared = False
         self.is_data_set = False
 
-        # In case there are NO shape parameters:
+        # If there are NO shape parameters:
         self.ps = None                # ps of the data
 
-        # These are only used in case there are shape parameters
+        # If there are shape parameters:
         self.mu_interpolator = None     # RegularGridInterpolator mapping z scores -> rates for each source
         self.ps_interpolator = None     # RegularGridInterpolator mapping z scores -> (source, event) p-values
-        self.anchor_models = dict()     # dictionary mapping z-score -> actual model
+        self.anchor_models = OrderedDict()     # dictionary mapping z-score -> actual model
         self.anchor_z_arrays = None     # list of numpy arrays of z-parameters of each anchor model
 
         # For the 'grid' interpolation mode:
         self.anchor_z_grid = None       # numpy array: z-parameter combinations grid
 
+        # For the 'radial' interpolation mode:
+        self.normed_model_zs = []       # numpy array: keys of self.anchor_models,
+                                        # normalized to [0,1] (assuming initial bounds)
+        self.mins = []                  # Numpy array: minima in each shape param dim, used for normalization above
+        self.lengths = []               # Numpy array: range " " "
+        self.r0s = []                   # Numpy array: distance at ach model to the five closest points
+
         # Compute the base model.
         self.base_model = Model(self.pdf_base_config, ipp_client=ipp_client)
         self.source_list = [s.name for s in self.base_model.sources]
 
-    def prepare(self, n_sample_points=100, ipp_client=None):
+    def prepare(self, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
         This will  compute the models for each shape parameters anchor value combination.
         """
@@ -73,36 +80,92 @@ class LogLikelihood(object):
             self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
                                     for setting_name, (anchors, _) in self.shape_parameters.items()]
             self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
+            zs_list = [zs for _, zs in self.anchor_grid_iterator()]
+
+            self.upsample(zs_list, ipp_client=None)
 
         else:
-            # Sample a Latin hypercube of models
-            self.anchor_z_arrays = latin(n_sample_points,
-                                         len(self.shape_parameters),
-                                         box=self.get_bounds())
+            # Get the bounds needed to scale the zs
+            bounds = np.array(self.get_bounds())
+            self.mins = bounds[:, 0]
+            self.lengths = bounds[:, 1] - bounds[:, 0]
 
-        # Create the configs for each model
+            self.upsample_box(ipp_client=ipp_client)
+
+        self.is_prepared = True
+
+    def upsample(self, zs_list=None, ipp_client=None):
+        """Construct models at z-coordinates and add them to the models used for PDF interpolation.
+        zs_list: list of listlikes, z-coordinates for each model you want to add.
+        """
+        if self.itp_mode == 'grid' and self.is_prepared:
+            raise NotImplementedError("Can't upsample a model in grid-based interpolation mode")
+
+        # Create the configs for each new model
         configs = []
-        for zs in self.anchor_z_arrays:
-            # Construct the config for this model
+        for zs in zs_list:
             config = deepcopy(self.pdf_base_config)
             config['show_pdf_sampling_progress'] = False
             for i, (setting_name, (anchors, _)) in enumerate(self.shape_parameters.items()):
-                config[setting_name] = anchors[zs[i]]
+                if self.itp_mode == 'grid':
+                    # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
+                    config[setting_name] = anchors[zs[i]]
+                else:
+                    # The zs themselves are the settings (the anchors dict is redundant).
+                    # This mode doesn't work with non-numerical settings.
+                    config[setting_name] = zs[i]
             configs.append(config)
 
+        # Create the new models
         models = create_models_in_parallel(configs, ipp_client,
                                            block=self.config.get('block_during_paralellization', False))
 
-        for zs, model in tqdm(zip(self.anchor_z_arrays, models),
+        # Add the new models to the anchor_models dict
+        for zs, model in tqdm(zip(zs_list, models),
                              total=len(configs),
                              desc="Computing models for shape parameter anchor points"):
-            self.anchor_models[zs] = model
+            self.anchor_models[tuple(zs)] = model
 
-        # Build the interpolator for the rates of each source
+        if self.itp_mode == 'radial':
+            # Rescale the zs to the bounds. It's fine if the zs are outside the bounds, but we need something
+            # to scale the different dimensions to similar ranges so norms make sense.
+            # Notice zs_list is redefined here to be the list of zs of *all* models, not just the new ones
+            zs_list = list(self.anchor_models.keys())
+            self.normed_model_zs = [(np.array(_zs) - self.mins)/self.lengths for _zs in zs_list]
+
+            self.recalculate_r0s()
+
+
+        # Build the interpolator for the rates of each source.
         self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
                                                        extra_dims=[len(self.source_list)])
 
-        self.is_prepared = True
+        # The PDF interpolator has to be (re)built in set_data
+        self.is_data_set = False
+        self.ps_interpolator = None
+
+    def recalculate_r0s(self):
+        """For each model, (re)compute the decay distance for the RBF smoothing."""
+        # Get the average distance to the five closest points
+        self.r0s = KDTree(self.normed_model_zs).query(self.normed_model_zs,
+                                                      self.config.get('r_sample_points', 5))[0].mean(axis=1)
+        decay_response = self.config.get('decay_response_to_density', 'constant')
+        if decay_response == 'constant':
+            self.r0s = np.ones_like(self.r0s) * self.r0s.mean()
+        elif decay_response == 'proportional':
+            pass
+        else:
+            raise NotImplementedError(decay_response)
+
+    def upsample_box(self, box_bounds=None, n_samples=None, ipp_client=None):
+        if box_bounds is None:
+            box_bounds = self.get_bounds()
+        if n_samples is None:
+            n_samples = self.config.get('initial_sampling_points', 100)
+
+        # Sample a Latin hypercube of models
+        zs_list = latin(n_samples, len(self.shape_parameters), box=box_bounds)
+        self.upsample(zs_list, ipp_client=ipp_client)
 
     def set_data(self, d):
         """Prepare the dataset d for likelihood function evaluation
@@ -217,7 +280,7 @@ class LogLikelihood(object):
         :param f: Function which takes a model as argument, and produces an extra_dims shaped array.
         :param extra_dims: tuple of integers, shape of return value of f.
         """
-        if self.itp_mode == 'regular':
+        if self.itp_mode == 'grid':
 
             # Allocate an array which will hold the scores at each anchor model
             anchor_scores = np.zeros(list(self.anchor_z_grid.shape)[:-1] + extra_dims)
@@ -231,29 +294,32 @@ class LogLikelihood(object):
             return RegularGridInterpolator(self.anchor_z_arrays, anchor_scores)
 
         elif self.itp_mode == 'radial':
-            anchor_scores = np.array([f(_models_zs) for _models_zs in self.anchor_z_arrays])
-
-            # Rescale the zs to the bounds. These could have been stored as attributes in prepare() instead...
-            bounds = np.array(self.get_bounds())
-            mins = bounds[:, 0]
-            lengths = bounds[:, 1] - bounds[:, 0]
-            models_zs = [(_zs - mins)/lengths for _zs in self.anchor_z_arrays]
-            r0 = approx_avg_distance(models_zs)
+            anchor_scores = np.array([f(m) for m in self.anchor_models.values()])
 
             def interpolator(zs):
-                # Closure: Gets mins, lengths, model_zs, r0 from outer scope
-
                 # Compute the distance between the current point and each model
-                zs = (zs - mins) / lengths
-                rs = np.sqrt([np.dot(zs, _zs) for _zs in models_zs])
+                normed_zs = (zs - self.mins) / self.lengths
+                # print("Normed zs for this point: ", normed_zs)
+                rs = np.sqrt([np.dot(normed_zs - _nzs, normed_zs - _nzs)
+                              for _nzs in self.normed_model_zs])
+                # print("Distances to models: ", rs)
 
-                # Compute the weight of each model: inverse multi-quadratic
-                weights = 1/np.sqrt(1+(rs/r0)**2)
+                # Compute the weight of each model: exponential decay
+                # Note we use a normalized exponential, so models with small radius of influence (i.e. in dense regions)
+                # should have a higher weight when we get close to them than models with a large radius of influence.
+                r_of_influence = self.r0s * self.config.get('decay_multiplier', 5)
+                weights = np.exp(-rs/r_of_influence) / r_of_influence
+
                 weights /= np.sum(weights)
+                # print("Weights of models: ", weights)
+                # print("Data scores at models: ", anchor_scores)
 
-                return np.average(anchor_scores, weights=anchor_scores, axis=0)
+                return np.average(anchor_scores, weights=weights, axis=0)
 
             return interpolator
+
+        else:
+            raise NotImplementedError(self.itp_mode)
 
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
@@ -309,20 +375,7 @@ def arrays_to_grid(arrs):
     return np.stack(np.meshgrid(*arrs, indexing='ij'), axis=-1)
 
 
-def approx_avg_distance(points):
-    """Some approximation to average distance between points (array (n_points, n_dim))
-    found in scipy: https://github.com/pv/scipy-work/blob/master/scipy/interpolate/rbf.py#L203
-    """
-    # default epsilon is the "the average distance between nodes" based
-    # on a bounding hypercube
-    ximax = np.amax(points, axis=1)
-    ximin = np.amin(points, axis=1)
-    edges = ximax-ximin
-    edges = edges[np.nonzero(edges)]
-    return np.power(np.prod(edges)/len(points), 1.0/edges.size)
-
-
-def latin(n, d, box=None, shuffle_steps=1000):
+def latin(n, d, box=None, shuffle_steps=500):
     """Creates a latin hypercube of n points in d dimensions
     Stolen from https://github.com/paulknysh/blackbox
     """

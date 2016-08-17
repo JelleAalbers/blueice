@@ -55,7 +55,8 @@ class MonteCarloSource(Source):
         # Compute a hash to uniquely identify the relevant settings for this source.
         # Must do this before filename arguments are converted to objects from those files in Source.__init__.
         self.hash = utils.deterministic_hash({k: v for k, v in model.inert_config.items()
-                                              if k not in config['ignore_settings'] + model.config['nohash_settings']})
+                                              if k not in config.get('ignore_settings', tuple()) +
+                                                          model.config['nohash_settings']})
         self.hash += utils.deterministic_hash(config)
 
         super().__init__(model, config, **kwargs)
@@ -68,7 +69,7 @@ class MonteCarloSource(Source):
         cache_filename = os.path.join(cache_dir, self.hash)
 
         # Have we computed the pdfs etc. for this configuration before? If so, load the information.
-        if not self.model.config['force_pdf_recalculation'] and os.path.exists(cache_filename):
+        if not self.model.config.get('force_pdf_recalculation', False) and os.path.exists(cache_filename):
             self.from_cache = True
             for k, v in utils.load_pickle(cache_filename).items():
                 setattr(self, k, v)
@@ -93,9 +94,11 @@ class MonteCarloSource(Source):
     def compute_pdf(self, ipp_client=None):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)
         # Number of events to simulate will be rounded up to the nearest batch size
-        batch_size = self.model.config['pdf_sampling_batch_size']
+        n_events = self.n_events_for_pdf * self.model.config.get('pdf_sampling_multiplier', 1)
+        batch_size = self.model.config.get('pdf_sampling_batch_size', n_events)
         bins = self.model.bins
-        n_batches = int((self.n_events_for_pdf * self.model.config['pdf_sampling_multiplier']) // batch_size + 1)
+        # Round to the nearest number of full batches
+        n_batches = int(np.round(n_events/batch_size))
         n_events = n_batches * batch_size
         mh = Histdd(bins=bins)
 
