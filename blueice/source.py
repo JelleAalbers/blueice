@@ -14,8 +14,8 @@ class Source(object):
     name = 'unspecified'
     label = 'Catastrophic irreducible noise'
     color = 'black'                 # Color to use in plots
-    events_per_day = 0
-    fraction_in_range = 0           # Fraction of simulated events that fall in analysis space.
+    events_per_day = 1
+    fraction_in_range = 1           # Fraction of simulated events that fall in analysis space.
     ignore_settings = tuple()       # Settings from the model config that don't impact this source at all
 
     def __init__(self, model, config, *args, **kwargs):
