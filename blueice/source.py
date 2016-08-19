@@ -55,7 +55,7 @@ class MonteCarloSource(Source):
         # Compute a hash to uniquely identify the relevant settings for this source.
         # Must do this before filename arguments are converted to objects from those files in Source.__init__.
         self.hash = utils.deterministic_hash({k: v for k, v in model.inert_config.items()
-                                              if k not in config.get('ignore_settings', tuple()) +
+                                              if k not in config.get('ignore_settings', []) +
                                                           model.config['nohash_settings']})
         self.hash += utils.deterministic_hash(config)
 

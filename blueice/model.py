@@ -28,7 +28,7 @@ class Model(object):
         self.config.setdefault('livetime_days', 1)
         self.config.setdefault('data_dirs', 1)
         self.config.setdefault('nohash_settings',
-                               tuple(['data_dirs', 'pdf_sampling_batch_size', 'force_pdf_recalculation']))
+                               ['data_dirs', 'pdf_sampling_batch_size', 'force_pdf_recalculation'])
 
         self.config.update(kwargs)
         self.inert_config = deepcopy(self.config)       # Copy without file names -> loaded objects conversion

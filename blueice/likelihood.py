@@ -8,12 +8,15 @@ from scipy import stats
 from tqdm import tqdm
 
 from .model import Model, create_models_in_parallel
+from .utils import arrays_to_grid, latin
 
 
 class LogLikelihood(object):
     """Extended log likelihood function with several rate and/or shape parameters
 
     likelihood_config options:
+        interpolation_mode      'grid' or 'radial'
+
         unphysical_behaviour
         outlier_likelihood
         parallelize_models: True (default) or False
@@ -135,7 +138,6 @@ class LogLikelihood(object):
 
             self.recalculate_r0s()
 
-
         # Build the interpolator for the rates of each source.
         self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
                                                        extra_dims=[len(self.source_list)])
@@ -184,11 +186,11 @@ class LogLikelihood(object):
         self.is_data_set = True
 
     def add_rate_parameter(self, source_name, log_prior=None):
-        """Add a rate parameters to the likelihood function.
-        You don't actually have to use this unless you want to specify the prior.
-        "rate" means a rate of events per day in total (not just events that procuce signals in range!)
+        """Add a rate parameter names source_name + "_rate_multiplier" to the likelihood function..
+        The values of this parameter will MULTIPLY the expected rate of events for the source
+        (whatever that is, it varyies depending on the shape parameters).
         :param source_name: Name of the source for which you want to vary the rate
-        :param log_prior: prior logpdf function on rate
+        :param log_prior: prior logpdf function on rate multiplier (not on rate itself!)
         """
         self.rate_parameters[source_name] = log_prior
 
@@ -242,18 +244,14 @@ class LogLikelihood(object):
             mus = self.base_model.expected_events()
             ps = self.ps
 
-        # Apply the rate modifiers
+        # Apply the rate multipliers
         for source_i, source_name in enumerate(self.source_list):
-            if source_name + '_rate' in kwargs:
-                # The user gave a rate in total events/day, and this is what goes into the prior.
-                new_total_rate = kwargs[source_name + '_rate']
-                log_prior = self.rate_parameters.get(source_name, None)
-                if log_prior is not None:
-                    result += log_prior(new_total_rate)
+            rate_multiplier = kwargs.get(source_name + '_rate_multiplier', 1)
+            mus[source_i] *= rate_multiplier
 
-                # However, the model / mus interpolator provides and the likelihood expects
-                # the number of events IN RANGE /day as mu. So we rescale:
-                mus[source_i] *= new_total_rate / self.base_model.get_source(source_name).events_per_day
+            log_prior = self.rate_parameters.get(source_name, None)
+            if log_prior is not None:
+                result += log_prior(rate_multiplier)
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus >= 0) & (mus < float('inf'))):
@@ -337,9 +335,8 @@ class LogLikelihood(object):
     # Adding more general priors is the user's responsibility
     # (either provide prior argument to add_x_parameter, or wrap the loglikelihood function)
     def add_rate_uncertainty(self, source_name, fractional_uncertainty):
-        """Adds a rate parameter to the likelihood function, with Gaussian prior around the default value"""
-        mu = self.base_model.get_source(source_name).events_per_day
-        self.add_rate_parameter(source_name, log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
+        """Adds a rate parameter to the likelihood function with Gaussian prior"""
+        self.add_rate_parameter(source_name, log_prior=stats.norm(1, fractional_uncertainty).logpdf)
 
     def add_shape_uncertainty(self, setting_name, fractional_uncertainty, anchor_zs=(-2, -1, 0, 1, 2)):
         """Adds a shape parameter to the likelihood function, with Gaussian prior around the default value.
@@ -368,53 +365,3 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
         p_events[True ^ (p_events > 0)] = outlier_likelihood
     return -mu.sum() + np.sum(np.log(p_events))
 
-
-def arrays_to_grid(arrs):
-    """Convert a list of n 1-dim arrays to an n+1-dim. array, where last dimension denotes coordinate values at point.
-    """
-    return np.stack(np.meshgrid(*arrs, indexing='ij'), axis=-1)
-
-
-def latin(n, d, box=None, shuffle_steps=500):
-    """Creates a latin hypercube of n points in d dimensions
-    Stolen from https://github.com/paulknysh/blackbox
-    """
-    # starting with diagonal shape
-    pts=np.ones((n,d))
-
-    for i in range(n):
-        pts[i]=pts[i]*i/(n-1.)
-
-    # spread function
-    def spread(p):
-        s=0.
-        for i in range(n):
-            for j in range(n):
-                if i > j:
-                    s=s+1./np.linalg.norm(np.subtract(p[i],p[j]))
-        return s
-
-    # minimizing spread function by shuffling
-    currminspread=spread(pts)
-
-    for m in tqdm(range(shuffle_steps), desc='Shuffling latin hypercube'):
-
-        p1=np.random.randint(n)
-        p2=np.random.randint(n)
-        k=np.random.randint(d)
-
-        newpts=np.copy(pts)
-        newpts[p1,k],newpts[p2,k]=newpts[p2,k],newpts[p1,k]
-        newspread=spread(newpts)
-
-        if newspread<currminspread:
-            pts=np.copy(newpts)
-            currminspread=newspread
-
-    if box is None:
-        return pts
-
-    for i in range(len(box)):
-        pts[:, i] = box[i][0] + pts[:, i] * (box[i][1] - box[i][0])
-
-    return pts
