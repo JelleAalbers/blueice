@@ -94,7 +94,7 @@ class InterpolateAndExtrapolate1D(object):
     def __call__(self, points):
         try:
             points[0]
-        except TypeError:
+        except (TypeError, IndexError):
             points = np.array([points])
         points = np.clip(points, self.min, self.max)
         return self.interpolator(points)
