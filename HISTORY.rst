@@ -1,8 +1,13 @@
 ------------------
-0.3.0 (2016/08/10)
+0.3.0 (2016/08/21)
 ------------------
 
  * Renamed to blueice, XENON stuff renamed to laidbax
+ * Experimental radial template morphing (#4)
+ * Tests, several bugfixes (e.g. #3)
+ * Rate parameters are now rate multipliers
+ * Linear interpolation of density estimator
+ * Parallel model initialization
 
 ------------------
 0.2.0 (2016/07/31)
