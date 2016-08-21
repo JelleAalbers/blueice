@@ -1,7 +1,6 @@
 import os
 from hashlib import sha1
 import pickle
-import re
 
 import pandas as pd
 import numpy as np
