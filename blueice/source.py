@@ -148,7 +148,7 @@ class DensityEstimatingSource(Source):
             raise PDFNotComputedException("Attempt to call a PDF that has not been computed")
         method = self.config['pdf_interpolation_method']
         if method == 'linear':
-            # Clip the data to lay inside the bin centers region.
+            # The interpolator works only within the bin centers region: clip the input data to that.
             # Assuming you've cut the data to the analysis space first (which you should have!)
             # this is equivalent to assuming constant density in the outer half of boundary bins
             clipped_data = []

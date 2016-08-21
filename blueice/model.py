@@ -5,21 +5,19 @@ from . import utils
 
 
 class Model(object):
-    """Model for dataset simulation and analysis
+    """Model for dataset simulation and analysis: collects several Sources, which do the actual work
     """
 
-    def __init__(self, config, ipp_client=None, **kwargs):
+    def __init__(self, config, **kwargs):
         """
         :param config: Dictionary specifying detector parameters, source info, etc.
         :param kwargs: Overrides for the config (optional)
-        :param ipp_client: ipyparallel client to use for parallelizing initial computations (optional)
-        :return:
         """
         defaults = dict(livetime_days=1,
                         data_dirs=1,
                         nohash_settings=['data_dirs', 'pdf_sampling_batch_size',
                                          'force_pdf_recalculation'])
-        self.config = utils.combine_dicts(defaults, config, kwargs)
+        self.config = utils.combine_dicts(defaults, config, kwargs, deep_copy=True)
 
         # Initialize the sources. Each gets passed the entire config (without the 'sources' field)
         # with the settings in their entry in the sources field added to it.
@@ -32,7 +30,7 @@ class Model(object):
             conf = utils.combine_dicts(self.config,
                                        source_config,
                                        exclude=['sources', 'default_source_class', 'class'])
-            self.sources.append(source_class(conf, ipp_client=ipp_client))
+            self.sources.append(source_class(conf))
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
     def get_source(self, source_id):

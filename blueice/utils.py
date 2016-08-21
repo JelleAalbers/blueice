@@ -8,15 +8,28 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 
-def combine_dicts(*args, exclude=()):
+def inherit_docstring_from(cls):
+    """Decorator for inheriting doc strings, stolen from
+    https://groups.google.com/forum/#!msg/comp.lang.python/HkB1uhDcvdk/lWzWtPy09yYJ
+    """
+    def docstring_inheriting_decorator(fn):
+        fn.__doc__ = getattr(cls,fn.__name__).__doc__
+        return fn
+    return docstring_inheriting_decorator
+
+
+def combine_dicts(*args, exclude=(), deep_copy=False):
     """Returns a new dict with entries from all dicts passed, with later dicts overriding earlier ones.
     :param exclude: Remove these keys from the result.
+    :param deepcopy: Perform a deepcopy of the dicts before combining them.
     """
     if not len(args):
         return dict()
-    result = deepcopy(args[0])
-    for d in args[1:]:
-        result.update(deepcopy(d))
+    result = {}
+    for d in args:
+        if deep_copy:
+            d = deepcopy(d)
+        result.update(d)
     result = {k: v for k, v in result.items() if k not in exclude}
     return result
 
@@ -102,48 +115,3 @@ def arrays_to_grid(arrs):
     """Convert a list of n 1-dim arrays to an n+1-dim. array, where last dimension denotes coordinate values at point.
     """
     return np.stack(np.meshgrid(*arrs, indexing='ij'), axis=-1)
-
-
-def latin(n, d, box=None, shuffle_steps=500):
-    """Creates a latin hypercube of n points in d dimensions
-    Stolen from https://github.com/paulknysh/blackbox
-    """
-    # starting with diagonal shape
-    pts=np.ones((n,d))
-
-    for i in range(n):
-        pts[i]=pts[i]*i/(n-1.)
-
-    # spread function
-    def spread(p):
-        s=0.
-        for i in range(n):
-            for j in range(n):
-                if i > j:
-                    s=s+1./np.linalg.norm(np.subtract(p[i],p[j]))
-        return s
-
-    # minimizing spread function by shuffling
-    currminspread=spread(pts)
-
-    for m in tqdm(range(shuffle_steps), desc='Shuffling latin hypercube'):
-
-        p1=np.random.randint(n)
-        p2=np.random.randint(n)
-        k=np.random.randint(d)
-
-        newpts=np.copy(pts)
-        newpts[p1,k],newpts[p2,k]=newpts[p2,k],newpts[p1,k]
-        newspread=spread(newpts)
-
-        if newspread<currminspread:
-            pts=np.copy(newpts)
-            currminspread=newspread
-
-    if box is None:
-        return pts
-
-    for i in range(len(box)):
-        pts[:, i] = box[i][0] + pts[:, i] * (box[i][1] - box[i][0])
-
-    return pts

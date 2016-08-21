@@ -2,14 +2,12 @@ from collections import OrderedDict
 from copy import deepcopy
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
-from scipy.spatial import KDTree
 from scipy import stats
 from tqdm import tqdm
 
 from .model import Model
-from .utils import arrays_to_grid, latin
 from .parallel import create_models_in_parallel
+from .pdf_morphers import MORPHERS
 
 
 class LogLikelihood(object):
@@ -35,8 +33,7 @@ class LogLikelihood(object):
         if likelihood_config is None:
             likelihood_config = {}
         self.config = likelihood_config
-        self.itp_mode = self.config.get('interpolation_mode', 'grid')
-        assert self.itp_mode in ('grid', 'radial')
+        self.config.setdefault('morpher', 'GridInterpolator')
 
         self.pdf_base_config = pdf_base_config
         self.base_model = None          # Base model: no variations of any settings
@@ -60,16 +57,6 @@ class LogLikelihood(object):
         self.anchor_models = OrderedDict()     # dictionary mapping z-score -> actual model
         self.anchor_z_arrays = None     # list of numpy arrays of z-parameters of each anchor model
 
-        # For the 'grid' interpolation mode:
-        self.anchor_z_grid = None       # numpy array: z-parameter combinations grid
-
-        # For the 'radial' interpolation mode:
-        self.normed_model_zs = []       # numpy array: keys of self.anchor_models,
-                                        # normalized to [0,1] (assuming initial bounds)
-        self.mins = []                  # Numpy array: minima in each shape param dim, used for normalization above
-        self.lengths = []               # Numpy array: range " " "
-        self.r0s = []                   # Numpy array: distance at ach model to the five closest points
-
         # Compute the base model.
         self.base_model = Model(self.pdf_base_config, ipp_client=ipp_client)
         self.source_list = [s.name for s in self.base_model.sources]
@@ -80,32 +67,9 @@ class LogLikelihood(object):
         """
         if not len(self.shape_parameters):
             return
-
-        if self.itp_mode == 'grid':
-            # Compute a regular grid of anchor models at the specified anchor points
-            self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
-                                    for setting_name, (anchors, _, _) in self.shape_parameters.items()]
-            self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
-            zs_list = [zs for _, zs in self.anchor_grid_iterator()]
-
-            self.upsample(zs_list, ipp_client=ipp_client)
-
-        else:
-            # Get the bounds needed to scale the zs
-            bounds = np.array(self.get_bounds())
-            self.mins = bounds[:, 0]
-            self.lengths = bounds[:, 1] - bounds[:, 0]
-
-            self.upsample_box(ipp_client=ipp_client)
-
-        self.is_prepared = True
-
-    def upsample(self, zs_list=None, ipp_client=None):
-        """Construct models at z-coordinates and add them to the models used for PDF interpolation.
-        zs_list: list of listlikes, z-coordinates for each model you want to add.
-        """
-        if self.itp_mode == 'grid' and self.is_prepared:
-            raise NotImplementedError("Can't upsample a model in grid-based interpolation mode")
+        self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
+                                                        self.shape_parameters)
+        zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
 
         # Create the configs for each new model
         configs = []
@@ -113,13 +77,8 @@ class LogLikelihood(object):
             config = deepcopy(self.pdf_base_config)
             config['show_pdf_sampling_progress'] = False
             for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
-                if self.itp_mode == 'grid':
-                    # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
-                    config[setting_name] = anchors[zs[i]]
-                else:
-                    # The zs themselves are the settings (the anchors dict is redundant).
-                    # This mode doesn't work with non-numerical settings.
-                    config[setting_name] = zs[i]
+                # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
+                config[setting_name] = anchors[zs[i]]
             configs.append(config)
 
         # Create the new models
@@ -132,45 +91,14 @@ class LogLikelihood(object):
                              desc="Computing models for shape parameter anchor points"):
             self.anchor_models[tuple(zs)] = model
 
-        if self.itp_mode == 'radial':
-            # Rescale the zs to the bounds. It's fine if the zs are outside the bounds, but we need something
-            # to scale the different dimensions to similar ranges so norms make sense.
-            # Notice zs_list is redefined here to be the list of zs of *all* models, not just the new ones
-            zs_list = list(self.anchor_models.keys())
-            self.normed_model_zs = [(np.array(_zs) - self.mins)/self.lengths for _zs in zs_list]
-
-            self.recalculate_r0s()
-
         # Build the interpolator for the rates of each source.
-        self.mus_interpolator = self.make_interpolator(f=lambda m: m.expected_events(),
-                                                       extra_dims=[len(self.source_list)])
+        self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
+                                                               extra_dims=[len(self.source_list)],
+                                                               anchor_models=self.anchor_models)
 
-        # The PDF interpolator has to be (re)built in set_data
         self.is_data_set = False
+        self.is_prepared = True
         self.ps_interpolator = None
-
-    def recalculate_r0s(self):
-        """For each model, (re)compute the decay distance for the RBF smoothing."""
-        # Get the average distance to the five closest points
-        self.r0s = KDTree(self.normed_model_zs).query(self.normed_model_zs,
-                                                      self.config.get('r_sample_points', 5))[0].mean(axis=1)
-        decay_response = self.config.get('decay_response_to_density', 'constant')
-        if decay_response == 'constant':
-            self.r0s = np.ones_like(self.r0s) * self.r0s.mean()
-        elif decay_response == 'proportional':
-            pass
-        else:
-            raise NotImplementedError(decay_response)
-
-    def upsample_box(self, box_bounds=None, n_samples=None, ipp_client=None):
-        if box_bounds is None:
-            box_bounds = self.get_bounds()
-        if n_samples is None:
-            n_samples = self.config.get('initial_sampling_points', 100)
-
-        # Sample a Latin hypercube of models
-        zs_list = latin(n_samples, len(self.shape_parameters), box=box_bounds)
-        self.upsample(zs_list, ipp_client=ipp_client)
 
     def set_data(self, d):
         """Prepare the dataset d for likelihood function evaluation
@@ -181,8 +109,9 @@ class LogLikelihood(object):
         if not self.is_prepared and len(self.shape_parameters):
             raise NotPreparedException("You have shape parameters in your model: first do .prepare(), then set the data.")
         if len(self.shape_parameters):
-            self.ps_interpolator = self.make_interpolator(f=lambda m: m.score_events(d),
-                                                          extra_dims=[len(self.source_list), len(d)])
+            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
+                                                                  extra_dims=[len(self.source_list), len(d)],
+                                                                  anchor_models=self.anchor_models)
         else:
             self.ps = self.base_model.score_events(d)
 
@@ -260,10 +189,8 @@ class LogLikelihood(object):
             # The RegularGridInterpolators want numpy arrays: give it to them...
             zs = np.asarray(zs)
 
-            # Get mus (rate for each source) and ps (pdf value for each source for each event) at this point
-            # The RegularGridInterpolators return numpy arrays with one extra dimension: remove it...
-            mus = self.mus_interpolator(zs)[0]
-            ps = self.ps_interpolator(zs)[0]
+            mus = self.mus_interpolator(zs)
+            ps = self.ps_interpolator(zs)
 
         else:
             mus = self.base_model.expected_events()
@@ -288,61 +215,6 @@ class LogLikelihood(object):
         # Get the loglikelihood. At last!
         result += extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
         return result
-
-    def anchor_grid_iterator(self):
-        """Iterates over the anchor grid, yielding index, z-values"""
-        it = np.nditer(np.zeros(list(self.anchor_z_grid.shape)[:-1]), flags=['multi_index'])
-        while not it.finished:
-            anchor_grid_index = list(it.multi_index)
-            yield anchor_grid_index, tuple(self.anchor_z_grid[anchor_grid_index + [slice(None)]])
-            it.iternext()
-
-    def make_interpolator(self, f, extra_dims):
-        """Return a RegularGridInterpolator which interpolates the extra_dims-valued function f(model)
-        between the anchor points.
-        :param f: Function which takes a model as argument, and produces an extra_dims shaped array.
-        :param extra_dims: tuple of integers, shape of return value of f.
-        """
-        if self.itp_mode == 'grid':
-
-            # Allocate an array which will hold the scores at each anchor model
-            anchor_scores = np.zeros(list(self.anchor_z_grid.shape)[:-1] + extra_dims)
-
-            # Iterate over the anchor grid points
-            for anchor_grid_index, _zs in self.anchor_grid_iterator():
-
-                # Compute f at this point, and store it in anchor_scores
-                anchor_scores[anchor_grid_index + [slice(None)] * len(extra_dims)] = f(self.anchor_models[tuple(_zs)])
-
-            return RegularGridInterpolator(self.anchor_z_arrays, anchor_scores)
-
-        elif self.itp_mode == 'radial':
-            anchor_scores = np.array([f(m) for m in self.anchor_models.values()])
-
-            def interpolator(zs):
-                # Compute the distance between the current point and each model
-                normed_zs = (zs - self.mins) / self.lengths
-                # print("Normed zs for this point: ", normed_zs)
-                rs = np.sqrt([np.dot(normed_zs - _nzs, normed_zs - _nzs)
-                              for _nzs in self.normed_model_zs])
-                # print("Distances to models: ", rs)
-
-                # Compute the weight of each model: exponential decay
-                # Note we use a normalized exponential, so models with small radius of influence (i.e. in dense regions)
-                # should have a higher weight when we get close to them than models with a large radius of influence.
-                r_of_influence = self.r0s * self.config.get('decay_multiplier', 5)
-                weights = np.exp(-rs/r_of_influence) / r_of_influence
-
-                weights /= np.sum(weights)
-                # print("Weights of models: ", weights)
-                # print("Data scores at models: ", anchor_scores)
-
-                return np.average(anchor_scores, weights=weights, axis=0)
-
-            return interpolator
-
-        else:
-            raise NotImplementedError(self.itp_mode)
 
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
