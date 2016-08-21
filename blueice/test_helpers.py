@@ -1,9 +1,13 @@
 """
 Common code for tests. The tests themselves are located in ../tests, but need to import this, so...
 """
-from blueice.source import *
-from blueice.model import *
-from blueice.likelihood import *
+from copy import deepcopy
+import matplotlib
+matplotlib.use('agg')
+import numpy as np
+
+from scipy import stats
+from blueice.source import Source, MonteCarloSource
 
 
 class GaussianSourceBase(Source):

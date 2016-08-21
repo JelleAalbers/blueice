@@ -1,4 +1,6 @@
 from blueice.test_helpers import *
+from blueice.model import Model
+from multihist import Histdd
 
 def test_mcsource():
     conf = test_conf(mc=True)

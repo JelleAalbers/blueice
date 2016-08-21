@@ -146,14 +146,14 @@ def one_parameter_interval(lf, target, bound, confidence_level=0.9, kind='upper'
     result, max_loglikelihood = bestfit_routine(lf, **kwargs)
     global_best = result[target]
 
-    if kind == 'central':
-        confidence_level = 1 - (1 - confidence_level)/2
-    # Note stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2 CL - 1)))
-    # So stats.norm.ppf(0.9)**2 = stats.chi2(1).ppf(0.8)
-    critical_value = stats.norm.ppf(confidence_level)**2
+    def t(hypothesis, critical_quantile):
+        """(profile) likelihood ratio test statistic, with critical_value subtracted
+        critical_quantile: fraction (percentile/100) of the test statistic distribution you want to find
+        """
+        # Note stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2 CL - 1)))
+        # So stats.norm.ppf(0.9)**2 = stats.chi2(1).ppf(0.8)
+        critical_value = stats.norm.ppf(critical_quantile) ** 2
 
-    def t(hypothesis):
-        """(profile) likelihood ratio test statistic, with critical_value subtracted"""
         if kind == 'upper' and hypothesis <= global_best:
             result = 0
         elif kind == 'lower' and hypothesis >= global_best:
@@ -168,11 +168,13 @@ def one_parameter_interval(lf, target, bound, confidence_level=0.9, kind='upper'
         return result - critical_value
 
     if kind == 'central':
-        return brentq(t, bound[0], global_best), brentq(t, global_best, bound[1])
+        a = brentq(t, bound[0], global_best, args=[(1-confidence_level)/2])
+        b = brentq(t, global_best, bound[1], args=[1 - (1 - confidence_level) / 2])
+        return a, b
     elif kind == 'lower':
-        return brentq(t, bound, global_best)
+        return brentq(t, bound, global_best, args=[1 - confidence_level])
     elif kind == 'upper':
-        return brentq(t, global_best, bound)
+        return brentq(t, global_best, bound, args=[confidence_level])
 
 
 def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):

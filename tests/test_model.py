@@ -1,5 +1,5 @@
 from blueice.test_helpers import *
-
+from blueice.model import Model
 
 def test_rates():
     m = Model(test_conf(n_sources=1))

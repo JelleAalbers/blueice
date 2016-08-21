@@ -1,5 +1,20 @@
 from blueice.test_helpers import *
+from blueice.likelihood import LogLikelihood, InvalidShapeParameter, NotPreparedException
 import pytest
+
+
+def test_likelihood_value():
+    """Just a sanity check to show we get the right likelihood values"""
+    lf = LogLikelihood(test_conf())
+    lf.add_rate_parameter('s0')
+    lf.base_model.sources[0].events_per_day = 1
+
+    # Make a single event at x=0
+    lf.set_data(np.zeros(1,
+                         dtype=[('x', np.float), ('source', np.int)]))
+
+    assert lf() == -1 + stats.norm.logpdf(0)
+    assert lf(s0_rate_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0))
 
 
 def test_shape_params():
