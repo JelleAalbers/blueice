@@ -50,11 +50,16 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
                 bounds.append((0, None))
 
     # Which shape parameters should we fit?
-    for p in list(lf.shape_parameters.keys()):
+    for p, (_, __, base_value) in lf.shape_parameters.items():
         if p not in kwargs:
             names.append(p)
             bounds.append(lf.get_bounds(p))
-            guesses.append(guess.get(p, lf.pdf_base_config.get(p)))
+            g = guess.get(p)
+            if g is None:
+                g = lf.pdf_base_config.get(p)
+                if not isinstance(g, (int, float)):
+                    g = base_value
+            guesses.append(g)
 
     if not len(names):
         raise NoOpimizationNecessary("There are no parameters to fit, no optimization is necessary")

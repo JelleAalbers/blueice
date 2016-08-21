@@ -15,6 +15,7 @@ class GaussianSource(Source):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.events_per_day *= self.model.config.get('some_multiplier', 1)
+        self.events_per_day *= len(self.model.config.get('strlen_multiplier', 'x'))
         (self.mu, self.sigma) = (self.model.config.get('mu'), self.model.config.get('sigma', 1))
 
     def pdf(self, *args):
@@ -35,6 +36,7 @@ BASE_SOURCE_CONF = {'class': GaussianSource,
 BASE_CONFIG = dict(
     sources = [BASE_SOURCE_CONF],
     mu = 0,
+    strlen_multiplier = 'q',
     sigma = 1,
     some_multiplier = 1,
     force_pdf_recalculation=True,

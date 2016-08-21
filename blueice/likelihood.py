@@ -40,10 +40,12 @@ class LogLikelihood(object):
         self.pdf_base_config = pdf_base_config
         self.base_model = None          # Base model: no variations of any settings
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
-        self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior).
-                                                 # where anchors is dict: representative number -> actual setting
-                                                 # From here on representative number will be called 'z-score'
-                                                 # We'll take care of sorting the keys in self.prepare()
+        self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
+             # where anchors is dict: representative number -> actual setting
+             # From here on representative number will be called 'z-score'.
+             # base_value is the default z-score that will be used.
+             # We'll take care of sorting the keys in self.prepare()
+
         self.source_list = []
         self.is_prepared = False
         self.is_data_set = False
@@ -81,7 +83,7 @@ class LogLikelihood(object):
         if self.itp_mode == 'grid':
             # Compute a regular grid of anchor models at the specified anchor points
             self.anchor_z_arrays = [np.array(list(sorted(anchors.keys())))
-                                    for setting_name, (anchors, _) in self.shape_parameters.items()]
+                                    for setting_name, (anchors, _, _) in self.shape_parameters.items()]
             self.anchor_z_grid = arrays_to_grid(self.anchor_z_arrays)
             zs_list = [zs for _, zs in self.anchor_grid_iterator()]
 
@@ -109,7 +111,7 @@ class LogLikelihood(object):
         for zs in zs_list:
             config = deepcopy(self.pdf_base_config)
             config['show_pdf_sampling_progress'] = False
-            for i, (setting_name, (anchors, _)) in enumerate(self.shape_parameters.items()):
+            for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
                 if self.itp_mode == 'grid':
                     # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
                     config[setting_name] = anchors[zs[i]]
@@ -194,34 +196,56 @@ class LogLikelihood(object):
         """
         self.rate_parameters[source_name] = log_prior
 
-    def add_shape_parameter(self, setting_name, anchors, log_prior=None):
+    def add_shape_parameter(self, setting_name, anchors, log_prior=None, base_value=None):
         """Add a shape parameter to the likelihood function
         :param setting_name: Name of the setting to vary
         :param anchors: a list/tuple/array of setting values (if they are numeric)
                         OR a dictionary with some numerical value -> setting values (for non-numeric settings).
+        :param base_value: for non-numeric settings, the number which represents the base model value of the setting.
         For example, if you have LCE maps with varying reflectivities, use
             add_shape_variation('s1_relative_ly_map', {0.98: 'lce_98%.pklz', 0.99: 'lce_99%.pklz, ...})
         then the argument s1_relative_ly_map of the likelihood function takes values between 0.98 and 0.99.
         """
+        is_numeric = isinstance(self.pdf_base_config.get(setting_name), (float, int))
         if not isinstance(anchors, dict):
             # Convert anchors list to a dictionary
-            if not isinstance(self.pdf_base_config.get(setting_name), (float, int)):
-                raise ValueError("When specifying anchors only by setting values, "
-                                 "base setting must have a numerical default.")
+            if not is_numeric:
+                raise InvalidShapeParameter("When specifying anchors only by setting values, "
+                                            "base setting must have a numerical default.")
             anchors = {z: z for z in anchors}
 
-        self.shape_parameters[setting_name] = (anchors, log_prior)
+        if not is_numeric and base_value is None:
+            raise InvalidShapeParameter("For non-numeric settings, you must specify what number will represent "
+                                        "the default value (the base model setting)")
+        if is_numeric and base_value is not None:
+            raise InvalidShapeParameter("For numeric settings, base_value is an unnecessary argument.")
+
+        self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
 
     def __call__(self, **kwargs):
         if not self.is_data_set:
             raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
 
+        # TODO: Validate arguments
+
         if len(self.shape_parameters):
             # Get the shape parameter z values
             zs = []
-            for setting_name, (_, log_prior) in self.shape_parameters.items():
-                z = kwargs.get(setting_name, self.pdf_base_config.get(setting_name))
+            for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
+                z = kwargs.get(setting_name)
+                if z is None:
+                    # Get the default value of the number representing this shape parameter
+                    base_setting = self.pdf_base_config.get(setting_name)
+                    is_numeric = isinstance(base_setting, (float, int))
+                    if is_numeric:
+                        assert base_value is None
+                        z = base_setting
+                    else:
+                        z = base_value
+
+                if not isinstance(z, (int, float)):
+                    raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
                 zs.append(z)
 
                 # Test if the anchor value out of range, if so, return -inf (since is impossible)
@@ -367,4 +391,8 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
 
 
 class NotPreparedException(Exception):
+    pass
+
+
+class InvalidShapeParameter(Exception):
     pass
