@@ -22,6 +22,7 @@ install:
   - conda install --yes python=$TRAVIS_PYTHON_VERSION numpy scipy matplotlib pandas
   # Setup coverage for converage measurement
   - pip install coverage
+  - pip install coveralls
 
   - python setup.py install
 
