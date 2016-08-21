@@ -9,6 +9,7 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = open('requirements.txt').read().splitlines()
+test_requirements = requirements + ['coverage', 'pytest']
 
 setup(name='blueice',
       version='0.2.0',
@@ -19,10 +20,13 @@ setup(name='blueice',
       url='https://github.com/JelleAalbers/blueice',
       packages=['blueice'],
       package_dir={'blueice': 'blueice'},
-      install_requires=requirements,
       license="MIT",
       zip_safe=False,
       keywords='blueice',
+      test_suite='tests',
+    install_requires=requirements,
+      tests_require=test_requirements,
+      setup_requires=['pytest-runner'] + test_requirements,
       classifiers=[
           'Intended Audience :: Developers',
           'License :: OSI Approved :: MIT License',
