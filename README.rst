@@ -2,6 +2,9 @@ blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo genera
 ==========================================================================================
 Jelle Aalbers, 2016
 
+.. image:: https://travis-ci.org/JelleAalbers/blueice.svg?branch=master
+    :target: https://travis-ci.org/JelleAalbers/blueice
+
 Source code: `https://github.com/JelleAalbers/blueice`
 
 
