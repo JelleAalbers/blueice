@@ -1,4 +1,4 @@
-from blueice.test import *
+from blueice.test_helpers import *
 
 
 def test_rates():

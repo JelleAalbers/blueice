@@ -4,6 +4,9 @@ Jelle Aalbers, 2016
 
 .. image:: https://travis-ci.org/JelleAalbers/blueice.svg?branch=master
     :target: https://travis-ci.org/JelleAalbers/blueice
+.. image:: https://coveralls.io/repos/github/JelleAalbers/blueice/badge.svg?branch=master
+    :target: https://coveralls.io/github/JelleAalbers/blueice?branch=master
+
 
 Source code: `https://github.com/JelleAalbers/blueice`
 

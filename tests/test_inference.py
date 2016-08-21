@@ -1,4 +1,4 @@
-from blueice.test import *
+from blueice.test_helpers import *
 from blueice.inference import *
 
 def test_fit_scipy():
