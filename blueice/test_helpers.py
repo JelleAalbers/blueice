@@ -17,7 +17,7 @@ class GaussianSourceBase(Source):
 
     def simulate(self, n_events):
         d = np.zeros(n_events, dtype=[('x',np.float), ('source',np.int)])
-        d['x']= stats.norm(self.mu, self.sigma).rvs(n_events)
+        d['x']= stats.norm(self.config['mu'], self.config['sigma']).rvs(n_events)
         return d
 
 
@@ -29,9 +29,9 @@ class GaussianSource(GaussianSourceBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.events_per_day *= self.model.config.get('some_multiplier', 1)
-        self.events_per_day *= len(self.model.config.get('strlen_multiplier', 'x'))
-        (self.mu, self.sigma) = (self.model.config.get('mu'), self.model.config.get('sigma', 1))
+        self.events_per_day *= self.config.get('some_multiplier', 1)
+        self.events_per_day *= len(self.config.get('strlen_multiplier', 'x'))
+        (self.mu, self.sigma) = (self.config.get('mu'), self.config.get('sigma', 1))
 
     def pdf(self, *args):
         return stats.norm(self.mu, self.sigma).pdf(args[0])
@@ -42,10 +42,12 @@ class GaussianMCSource(GaussianSourceBase, MonteCarloSource):
     """
     n_events_for_pdf = int(1e5)
 
-    def setup(self):
-        self.events_per_day *= self.model.config.get('some_multiplier', 1)
-        self.events_per_day *= len(self.model.config.get('strlen_multiplier', 'x'))
-        (self.mu, self.sigma) = (self.model.config.get('mu'), self.model.config.get('sigma', 1))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.events_per_day *= self.config.get('some_multiplier', 1)
+        self.events_per_day *= len(self.config.get('strlen_multiplier', 'x'))
+        (self.mu, self.sigma) = (self.config.get('mu'), self.config.get('sigma', 1))
+        self.compute_pdf()
 
 
 BASE_CONFIG = dict(

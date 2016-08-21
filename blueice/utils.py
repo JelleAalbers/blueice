@@ -1,10 +1,24 @@
+from copy import deepcopy
 import os
-from hashlib import sha1
 import pickle
+from hashlib import sha1
 
-import pandas as pd
+from tqdm import tqdm
 import numpy as np
 from scipy.interpolate import interp1d
+
+
+def combine_dicts(*args, exclude=()):
+    """Returns a new dict with entries from all dicts passed, with later dicts overriding earlier ones.
+    :param exclude: Remove these keys from the result.
+    """
+    if not len(args):
+        return dict()
+    result = deepcopy(args[0])
+    for d in args[1:]:
+        result.update(deepcopy(d))
+    result = {k: v for k, v in result.items() if k not in exclude}
+    return result
 
 
 def data_file_name(filename, data_dirs=None):
@@ -27,16 +41,10 @@ def find_file_in_folders(filename, folders):
     raise FileNotFoundError(filename)
 
 
-def load_pickle(filename, data_dirs=None):
-    """Loads a pickle from filename"""
-    with open(data_file_name(filename, data_dirs), mode='rb') as infile:
-        return pickle.load(infile)
-
-
-def load_csv(filename, data_dirs=None):
-    """Read csv file and return numpy float arrays x, y"""
-    return pd.read_csv(data_file_name(filename, data_dirs),
-                       delimiter=',', names=['x', 'y'], comment='#').values[1:].astype(np.float).T
+def read_pickle(filename):
+    with open(filename, mode='rb') as infile:
+        result = pickle.load(infile)
+    return result
 
 
 def save_pickle(stuff, filename):
@@ -67,18 +75,9 @@ def deterministic_hash(thing):
     return sha1(pickle.dumps(hashablize(thing))).hexdigest()
 
 
-def process_files_in_config(config, data_dirs):
-    """Replaces file name values in dictionary config with their files.
-    Modifies config in-place
-    """
-    for k, v in config.items():
-        if isinstance(v, str):
-            _, ext = os.path.splitext(v)
-            if ext == '.pkl':
-                config[k] = load_pickle(v, data_dirs)
-            elif ext == '.csv':
-                config[k] = load_csv(v, data_dirs)
-            # Add support for other formats here
+def _events_to_analysis_dimensions(events, analysis_space):
+    """Return a list of arrays of the values of events in each of the analysis dimensions specified in analysis_space"""
+    return [events[x] for x, bins in analysis_space]
 
 
 class InterpolateAndExtrapolate1D(object):

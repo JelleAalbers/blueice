@@ -7,8 +7,9 @@ from scipy.spatial import KDTree
 from scipy import stats
 from tqdm import tqdm
 
-from .model import Model, create_models_in_parallel
+from .model import Model
 from .utils import arrays_to_grid, latin
+from .parallel import create_models_in_parallel
 
 
 class LogLikelihood(object):

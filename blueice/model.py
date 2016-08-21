@@ -1,7 +1,3 @@
-import collections
-from copy import deepcopy
-from tqdm import tqdm
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -16,38 +12,28 @@ class Model(object):
         """
         :param config: Dictionary specifying detector parameters, source info, etc.
         :param kwargs: Overrides for the config (optional)
-                :param ipp_client: ipyparallel client to use for parallelizing initial computations (optional)
-        :param cache: Saves the model after initialization. Will has the config to provide identifier.
+        :param ipp_client: ipyparallel client to use for parallelizing initial computations (optional)
         :return:
         """
-        # Copy the config: we're going to modify it and don't want user to be surprised
-        self.config = deepcopy(config)
+        defaults = dict(livetime_days=1,
+                        data_dirs=1,
+                        nohash_settings=['data_dirs', 'pdf_sampling_batch_size',
+                                         'force_pdf_recalculation'])
+        self.config = utils.combine_dicts(defaults, config, kwargs)
 
-        # Defaults for settings that are used in several places.
-        # Settings used in one place have their default coded there (using .get)
-        self.config.setdefault('livetime_days', 1)
-        self.config.setdefault('data_dirs', 1)
-        self.config.setdefault('nohash_settings',
-                               ['data_dirs', 'pdf_sampling_batch_size', 'force_pdf_recalculation'])
-
-        self.config.update(kwargs)
-        self.inert_config = deepcopy(self.config)       # Copy without file names -> loaded objects conversion
-
-        # Load objects specified by file name into the config dictionary.
-        utils.process_files_in_config(self.config, self.config['data_dirs'])
-
-        self.space = collections.OrderedDict(self.config['analysis_space'])
-        self.dims = list(self.space.keys())
-        self.bins = list(self.space.values())
-
+        # Initialize the sources. Each gets passed the entire config (without the 'sources' field)
+        # with the settings in their entry in the sources field added to it.
         self.sources = []
         for source_config in self.config['sources']:
             if 'class' in source_config:
                 source_class = source_config['class']
-                del source_config['class']    # Don't want this stored in source config
             else:
                 source_class = self.config['default_source_class']
-            self.sources.append(source_class(self, source_config, ipp_client=ipp_client))
+            conf = utils.combine_dicts(self.config,
+                                       source_config,
+                                       exclude=['sources', 'default_source_class', 'class'])
+            self.sources.append(source_class(conf, ipp_client=ipp_client))
+        del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
     def get_source(self, source_id):
         return self.sources[self.get_source_i(source_id)]
@@ -63,20 +49,11 @@ class Model(object):
                 raise ValueError("Unknown source %s" % source_id)
             return s_i
 
-    def range_cut(self, d, ps=None):
-        """Return events from dataset d which are in the analysis space
-        Also removes events for which all of the source PDF's are zero (which cannot be meaningfully interpreted)
-        """
+    def range_cut(self, d):
+        """Return events from dataset d which are inside the bounds of the analysis space"""
         mask = np.ones(len(d), dtype=np.bool)
-        for dimension, bin_edges in self.space.items():
+        for dimension, bin_edges in self.config['analysis_space']:
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
-
-        # Ignore events to which no source pdf assigns a positive probability.
-        # These would cause log(sum_sources (mu * p)) in the loglikelihood to become -inf.
-        if ps is None:
-            ps = self.score_events(d)
-        mask &= ps.sum(axis=0) != 0
-
         return d[mask]
 
     def simulate(self, restrict=True, rate_multipliers=None):
@@ -96,13 +73,13 @@ class Model(object):
             d = self.range_cut(d)
         return d
 
-    def to_space(self, d):
+    def to_analysis_dimensions(self, d):
         """Given a dataset, returns list of arrays of coordinates of the events in the analysis dimensions"""
-        return [d[self.dims[i]] for i in range(len(self.dims))]
+        return utils._events_to_analysis_dimensions(d, self.config['analysis_space'])
 
     def score_events(self, d):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
-        return np.vstack([s.pdf(*self.to_space(d)) for s in self.sources])
+        return np.vstack([s.pdf(*self.to_analysis_dimensions(d)) for s in self.sources])
 
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
@@ -115,10 +92,12 @@ class Model(object):
     def show(self, d, ax=None, dims=None):
         """Plot the events from dataset d in the analysis range
         ax: plot on this Axes
-        Dims: tuple of numbers indicating which dimension(s) to plot in. Can be one or two dimensions.
+        Dims: numbers of dimension(s) to plot in. Can be up to two dimensions.
         """
+        bins, dim_names = zip(*self.config['analysis_space'])
+
         if dims is None:
-            if len(self.bins) == 1:
+            if len(bins) == 1:
                 dims = tuple([0])
             else:
                 dims = (0, 1)
@@ -128,42 +107,14 @@ class Model(object):
         # d = self.range_cut(d)   # Not needed, simulate already does this
         for s_i, s in enumerate(self.sources):
             q = d[d['source'] == s_i]
-            q_in_space = self.to_space(q)
+            q_in_space = self.to_analysis_dimensions(q)
             ax.scatter(q_in_space[dims[0]],
                        q_in_space[dims[1]] if len(dims) > 1 else np.zeros(len(q)),
                        color=s.color, s=5, label=s.label)
 
-        ax.set_xlabel(self.dims[dims[0]])
-        ax.set_xlim(self.bins[dims[0]][0], self.bins[dims[0]][-1])
+        ax.set_xlabel(dim_names[dims[0]])
+        ax.set_xlim(bins[dims[0]][0], bins[dims[0]][-1])
 
         if len(dims) > 1:
-            ax.set_ylabel(self.dims[dims[1]])
-            ax.set_ylim(self.bins[dims[1]][0], self.bins[dims[1]][-1])
-
-
-def create_models_in_parallel(configs, ipp_client=None, block=False):
-    """Return Models for each configuration in configs.
-    :param ipp_client: ipyparallel client to use for parallelized computation, or None (in which case models will be
-                       computed serially. For now only engines running in the same directory as the main code
-                       are supported, see #1.
-    :param configs: list of Model configuration dictionaries
-    :param block: passed to the async map of ipyparallel. Useful for debugging, but disables progress bar.
-    :return: list of Models.
-    """
-    if ipp_client is not None:
-        # Fully fledged blueice Models don't pickle, so we have to construct them again later in the main process
-        # (but then we can just grab their PDFs from cache, so it's quick)
-
-        def compute_model(conf):
-            Model(conf)
-            return None
-
-        asyncresult = ipp_client.load_balanced_view().map(compute_model, configs, ordered=False, block=block)
-        for _ in tqdm(asyncresult,
-                      desc="Computing models in parallel",
-                      smoothing=0,   # Show average speed, instantaneous speed is extremely variable
-                      total=len(configs)):
-            pass
-
-    # (Re)make the models in the main process; hopefully PDFs use the cache...
-    return [Model(conf) for conf in configs]
+            ax.set_ylabel(dim_names[dims[1]])
+            ax.set_ylim(bins[dims[1]][0], bins[dims[1]][-1])
