@@ -20,7 +20,16 @@ class Model(object):
         :param cache: Saves the model after initialization. Will has the config to provide identifier.
         :return:
         """
+        # Copy the config: we're going to modify it and don't want user to be surprised
         self.config = deepcopy(config)
+
+        # Defaults for settings that are used in several places.
+        # Settings used in one place have their default coded there (using .get)
+        self.config.setdefault('livetime_days', 1)
+        self.config.setdefault('data_dirs', 1)
+        self.config.setdefault('nohash_settings',
+                               ['data_dirs', 'pdf_sampling_batch_size', 'force_pdf_recalculation'])
+
         self.config.update(kwargs)
         self.inert_config = deepcopy(self.config)       # Copy without file names -> loaded objects conversion
 
@@ -35,7 +44,7 @@ class Model(object):
         for source_config in self.config['sources']:
             if 'class' in source_config:
                 source_class = source_config['class']
-                del source_config['source_class']    # Don't want this stored in source config
+                del source_config['class']    # Don't want this stored in source config
             else:
                 source_class = self.config['default_source_class']
             self.sources.append(source_class(self, source_config, ipp_client=ipp_client))
@@ -152,6 +161,7 @@ def create_models_in_parallel(configs, ipp_client=None, block=False):
         asyncresult = ipp_client.load_balanced_view().map(compute_model, configs, ordered=False, block=block)
         for _ in tqdm(asyncresult,
                       desc="Computing models in parallel",
+                      smoothing=0,   # Show average speed, instantaneous speed is extremely variable
                       total=len(configs)):
             pass
 

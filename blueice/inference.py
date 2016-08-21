@@ -11,16 +11,17 @@ import matplotlib.pyplot as plt
 class NoOpimizationNecessary(Exception):
     pass
 
+class OptimizationFailed(Exception):
+    pass
 
-def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs):
+def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
     """Return convenient stuff for feeding the LogLikelihood lf to an optimizer.
     :param **kwargs: fixed values for certain parameters. These will not be fitted.
     :param guess: dictionary with guesses for the remaining ("floating") parameters
-    :param rates_in_log_space: UNTESTED: let the minimizer work on the rates in log space instead
-    If you don't supply a guess, the default / base model value will be used for rate parameters,
-    and 0 for shape parameters (fixme: use base model value, even if has been turned into monster).
-
-    :param minus: f provides the minimum of the likelihood function instead
+    If you don't supply a guess for a parameter, the base model setting will be taken as a guess.
+    :param minus: if true (default), multiply result of LogLikelihood by -1.
+                  Minimizers tend to appreciate this, samplers like MCMC do not.
+    :param rates_in_log_space: UNTESTED: let the minimizer work on the rate multipliers in log space instead
 
     Returns f, guesses, names:
       - f: function which takes a single arraylike argument with only the floating parameters
@@ -36,11 +37,11 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
 
     # Which rate parameters should we fit?
     for p in lf.rate_parameters.keys():
-        if p + '_rate' not in kwargs:
+        if p + '_rate_multiplier' not in kwargs:
             # Default is the number of events per day total (not just in range).
             # This is what likelihood function expects, it knows how to deal with it.
-            g = guess.get('%s_rate' % p, lf.base_model.get_source(p).events_per_day)
-            names.append('%s_rate' % p)
+            g = guess.get('%s_rate_multiplier' % p, 1)
+            names.append('%s_rate_multiplier' % p)
             if rates_in_log_space:
                 guesses.append(np.log10(g))
                 bounds.append((None, None))
@@ -49,11 +50,16 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
                 bounds.append((0, None))
 
     # Which shape parameters should we fit?
-    for p in list(lf.shape_parameters.keys()):
+    for p, (_, __, base_value) in lf.shape_parameters.items():
         if p not in kwargs:
             names.append(p)
             bounds.append(lf.get_bounds(p))
-            guesses.append(guess.get(p, 0))
+            g = guess.get(p)
+            if g is None:
+                g = lf.pdf_base_config.get(p)
+                if not isinstance(g, (int, float)):
+                    g = base_value
+            guesses.append(g)
 
     if not len(names):
         raise NoOpimizationNecessary("There are no parameters to fit, no optimization is necessary")
@@ -65,7 +71,7 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
         # Get the arguments from args, then fill in the ones already fixed in outer kwargs
         call_kwargs = {}
         for i, k in enumerate(names):
-            if rates_in_log_space and k.endswith('_rate'):
+            if rates_in_log_space and k.endswith('_rate_multiplier'):
                 # The minimizer provides on the log10 of the rate. Convert it back to a normal rate for the
                 # likelihood function
                 call_kwargs[k] = 10**args[i]
@@ -79,13 +85,19 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=True, **kwargs
 ##
 # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
 ##
-def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=True, **kwargs):
+def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bounds_to_minimizer=False, **kwargs):
     """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
     Returns {param: best fit}, maximum loglikelihood.
 
     Optimization is performed with the scipy minimizer
     :param minimize_kwargs: dictionary with optimz to minimize
-    Other kwargs are passed to make_objective
+    :param pass_bounds_to_minimizer: if true (default is False), pass bounds to minimizer via the bounds argument.
+    This shouldn't be necessary, as the likelihood function returns -inf outside the bounds.
+    I've gotten strange results with scipy's L-BFGS-B, scipy's default method with bounds problems,
+    perhaps it is less well tested?
+    If you pass this, I recommend passing a different minimizer method (e.g. TNC or SLSQP).
+
+    Other kwargs are passed to make_objective.
     """
     if minimize_kwargs is None:
         minimize_kwargs = {}
@@ -96,23 +108,23 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=True, **kwargs):
         return {}, lf(**kwargs)
 
     optresult = minimize(f, guess,
-                         bounds=bounds,
+                         bounds=bounds if pass_bounds_to_minimizer else None,
                          **minimize_kwargs)
 
     if not optresult.success:
         # Try again with a more robust, but slower method
         optresult = minimize(f, guess,
-                             bounds=bounds,
+                             bounds=bounds if pass_bounds_to_minimizer else None,
                              method='Nelder-Mead',
                              **minimize_kwargs)
         if not optresult.success:
-            raise RuntimeError("Optimization failure: ", optresult)
+            raise OptimizationFailed("Optimization failure: ", optresult)
 
     optimum = optresult.x if len(names) != 1 else [optresult.x.item()]
 
     results = {}
     for i, name in enumerate(names):
-        if rates_in_log_space and name.endswith('_rate'):
+        if rates_in_log_space and name.endswith('_rate_multiplier'):
             # The minimizer was fooled into seeing the log10 of the rate, convert it back for the user
             results[name] = 10**optimum[i]
         else:
@@ -128,7 +140,7 @@ def one_parameter_interval(lf, target, bound, confidence_level=0.9, kind='upper'
     kwargs: dictionary with arguments to bestfit
     """
     if target is None:
-        target = lf.source_list[-1] + '_rate'
+        target = lf.source_list[-1] + '_rate_multiplier'
 
     # Find the likelihood of the global best fit (denominator of likelihood ratio)
     result, max_loglikelihood = bestfit_routine(lf, **kwargs)
