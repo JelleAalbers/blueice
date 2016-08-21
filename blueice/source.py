@@ -3,7 +3,6 @@ from functools import reduce
 
 import numpy as np
 from multihist import Histdd
-from scipy import stats
 from tqdm import tqdm
 
 from . import utils
@@ -164,24 +163,3 @@ class MonteCarloSource(Source):
 
         else:
             raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
-
-
-class GaussianSource(Source):
-    events_per_day = 1000
-    """A 1d source with a Gaussian PDF -- useful for testing
-    If your sources are as simple as this, you probably don't need blueice!
-    """
-    fraction_in_range = 1
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.events_per_day *= self.model.config.get('some_multiplier', 1)
-        (self.mu, self.sigma) = (self.model.config.get('mu'), self.model.config.get('sigma', 1))
-
-    def pdf(self, *args):
-        return stats.norm(self.mu, self.sigma).pdf(args[0])
-
-    def simulate(self, n_events):
-        d = np.zeros(n_events, dtype=[('x',np.float), ('source',np.int)])
-        d['x']= stats.norm(self.mu, self.sigma).rvs(n_events)
-        return d

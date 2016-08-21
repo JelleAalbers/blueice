@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 class NoOpimizationNecessary(Exception):
     pass
 
+class OptimizationFailed(Exception):
+    pass
 
 def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
     """Return convenient stuff for feeding the LogLikelihood lf to an optimizer.
@@ -111,7 +113,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
                              method='Nelder-Mead',
                              **minimize_kwargs)
         if not optresult.success:
-            raise RuntimeError("Optimization failure: ", optresult)
+            raise OptimizationFailed("Optimization failure: ", optresult)
 
     optimum = optresult.x if len(names) != 1 else [optresult.x.item()]
 

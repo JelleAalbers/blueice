@@ -176,7 +176,7 @@ class LogLikelihood(object):
         the s1 and s2 values of your events as numpy arrays.
         """
         if not self.is_prepared and len(self.shape_parameters):
-            raise RuntimeError("You have shape parameters in your model: first do .prepare(), then set the data.")
+            raise NotPreparedException("You have shape parameters in your model: first do .prepare(), then set the data.")
         if len(self.shape_parameters):
             self.ps_interpolator = self.make_interpolator(f=lambda m: m.score_events(d),
                                                           extra_dims=[len(self.source_list), len(d)])
@@ -214,7 +214,7 @@ class LogLikelihood(object):
 
     def __call__(self, **kwargs):
         if not self.is_data_set:
-            raise RuntimeError("First do .set_data(dataset), then start evaluating the likelihood function")
+            raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
 
         if len(self.shape_parameters):
@@ -232,13 +232,13 @@ class LogLikelihood(object):
                 if log_prior is not None:
                     result += log_prior(z)
 
-                        # The RegularGridInterpolators want numpy arrays: give it to them...
+            # The RegularGridInterpolators want numpy arrays: give it to them...
             zs = np.asarray(zs)
 
             # Get mus (rate for each source) and ps (pdf value for each source for each event) at this point
-                        # The RegularGridInterpolators return numpy arrays with one extra dimension: remove it...
-            mus = self.mus_interpolator(zs)
-            ps = self.ps_interpolator(zs)
+            # The RegularGridInterpolators return numpy arrays with one extra dimension: remove it...
+            mus = self.mus_interpolator(zs)[0]
+            ps = self.ps_interpolator(zs)[0]
 
         else:
             mus = self.base_model.expected_events()
@@ -365,3 +365,6 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
         p_events[True ^ (p_events > 0)] = outlier_likelihood
     return -mu.sum() + np.sum(np.log(p_events))
 
+
+class NotPreparedException(Exception):
+    pass
