@@ -183,8 +183,7 @@ class DensityEstimatingSource(Source):
 
 class MonteCarloSource(DensityEstimatingSource):
     """A DensityEstimatingSource which gets the events for the density estimator from its own simulate() method.
-    Child classes have to implement simulate, and call compute_pdf when they are ready
-    (usually at the end of their own init)
+    Child classes have to implement simulate.
     """
     def __init__(self, config, *args, **kwargs):
         defaults = dict(n_events_for_pdf=1e6,
