@@ -1,4 +1,11 @@
 ------------------
+0.4.0 (2016/08/22)
+------------------
+ * Big internal refactor, some API changes (#5)
+ * DensityEstimatingSource
+ * Bugfixes, more tests
+
+------------------
 0.3.0 (2016/08/21)
 ------------------
 
