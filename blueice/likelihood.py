@@ -3,7 +3,6 @@ from copy import deepcopy
 
 import numpy as np
 from scipy import stats
-from tqdm import tqdm
 
 from .model import Model
 from .parallel import create_models_in_parallel
@@ -14,19 +13,16 @@ class LogLikelihood(object):
     """Extended log likelihood function with several rate and/or shape parameters
 
     likelihood_config options:
-        interpolation_mode      'grid' or 'radial'
-
         unphysical_behaviour
         outlier_likelihood
         parallelize_models: True (default) or False
         block_during_paralellization: True or False (default)
     """
-    def __init__(self, pdf_base_config, likelihood_config=None, ipp_client=None, **kwargs):
+    def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
         """
         :param pdf_base_config: dictionary with configuration passed to the Model
         :param likelihood_config: dictionary with options for LogLikelihood itself
-        :param ipp_client: ipyparallel client. Use if you want to parallelize computation of the base model.
-        :param kwargs: Overrides for pdf_base_config
+        :param kwargs: Overrides for pdf_base_config, not likelihood config!
         :return:
         """
         pdf_base_config.update(kwargs)
@@ -39,10 +35,10 @@ class LogLikelihood(object):
         self.base_model = None          # Base model: no variations of any settings
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
-             # where anchors is dict: representative number -> actual setting
-             # From here on representative number will be called 'z-score'.
-             # base_value is the default z-score that will be used.
-             # We'll take care of sorting the keys in self.prepare()
+        # where anchors is dict: representative number -> actual setting
+        # From here on representative number will be called 'z-score'.
+        # base_value is the default z-score that will be used.
+        # We'll take care of sorting the keys in self.prepare()
 
         self.source_list = []
         self.is_prepared = False
@@ -52,13 +48,12 @@ class LogLikelihood(object):
         self.ps = None                # ps of the data
 
         # If there are shape parameters:
-        self.mu_interpolator = None     # RegularGridInterpolator mapping z scores -> rates for each source
-        self.ps_interpolator = None     # RegularGridInterpolator mapping z scores -> (source, event) p-values
-        self.anchor_models = OrderedDict()     # dictionary mapping z-score -> actual model
-        self.anchor_z_arrays = None     # list of numpy arrays of z-parameters of each anchor model
+        self.anchor_models = OrderedDict()  # dictionary mapping z-score -> actual model
+        self.mu_interpolator = None     # function mapping z scores -> rates for each source
+        self.ps_interpolator = None     # function mapping z scores -> (source, event) p-values
 
         # Compute the base model.
-        self.base_model = Model(self.pdf_base_config, ipp_client=ipp_client)
+        self.base_model = Model(self.pdf_base_config)
         self.source_list = [s.name for s in self.base_model.sources]
 
     def prepare(self, ipp_client=None):
@@ -75,7 +70,6 @@ class LogLikelihood(object):
         configs = []
         for zs in zs_list:
             config = deepcopy(self.pdf_base_config)
-            config['show_pdf_sampling_progress'] = False
             for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
                 # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
                 config[setting_name] = anchors[zs[i]]
@@ -86,9 +80,7 @@ class LogLikelihood(object):
                                            block=self.config.get('block_during_paralellization', False))
 
         # Add the new models to the anchor_models dict
-        for zs, model in tqdm(zip(zs_list, models),
-                             total=len(configs),
-                             desc="Computing models for shape parameter anchor points"):
+        for zs, model in zip(zs_list, models):
             self.anchor_models[tuple(zs)] = model
 
         # Build the interpolator for the rates of each source.
@@ -98,7 +90,6 @@ class LogLikelihood(object):
 
         self.is_data_set = False
         self.is_prepared = True
-        self.ps_interpolator = None
 
     def set_data(self, d):
         """Prepare the dataset d for likelihood function evaluation
@@ -107,7 +98,8 @@ class LogLikelihood(object):
         the s1 and s2 values of your events as numpy arrays.
         """
         if not self.is_prepared and len(self.shape_parameters):
-            raise NotPreparedException("You have shape parameters in your model: first do .prepare(), then set the data.")
+            raise NotPreparedException("You have shape parameters in your model: "
+                                       "first do .prepare(), then set the data.")
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
                                                                   extra_dims=[len(self.source_list), len(d)],
@@ -119,8 +111,8 @@ class LogLikelihood(object):
 
     def add_rate_parameter(self, source_name, log_prior=None):
         """Add a rate parameter names source_name + "_rate_multiplier" to the likelihood function..
-        The values of this parameter will MULTIPLY the expected rate of events for the source
-        (whatever that is, it varyies depending on the shape parameters).
+        The values of this parameter will MULTIPLY the expected rate of events for the source.
+        The rates of sources can also vary due to shape parameters.
         :param source_name: Name of the source for which you want to vary the rate
         :param log_prior: prior logpdf function on rate multiplier (not on rate itself!)
         """
@@ -228,7 +220,7 @@ class LogLikelihood(object):
         else:
             raise ValueError("Non-existing parameter %s" % parameter_name)
 
-    # Convenience function for uncertainties.
+    # Convenience functions for uncertainties.
     # Adding more general priors is the user's responsibility
     # (either provide prior argument to add_x_parameter, or wrap the loglikelihood function)
     def add_rate_uncertainty(self, source_name, fractional_uncertainty):

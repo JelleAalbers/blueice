@@ -8,11 +8,14 @@ from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+
 class NoOpimizationNecessary(Exception):
     pass
 
+
 class OptimizationFailed(Exception):
     pass
+
 
 def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
     """Return convenient stuff for feeding the LogLikelihood lf to an optimizer.
@@ -67,6 +70,7 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
     # Minimize the - log likelihood
     # Uses kwargs, sign, and self from external scope. So don't try to pickle it...
     sign = -1 if minus else 1
+
     def objective(args):
         # Get the arguments from args, then fill in the ones already fixed in outer kwargs
         call_kwargs = {}
@@ -82,9 +86,12 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
 
     return objective, names, np.array(guesses), bounds
 
+
 ##
 # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
 ##
+
+
 def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bounds_to_minimizer=False, **kwargs):
     """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
     Returns {param: best fit}, maximum loglikelihood.
@@ -132,7 +139,9 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
     return results,  -optresult.fun
 
 
-def one_parameter_interval(lf, target, bound, confidence_level=0.9, kind='upper', bestfit_routine=bestfit_scipy, **kwargs):
+def one_parameter_interval(lf, target, bound,
+                           confidence_level=0.9, kind='upper',
+                           bestfit_routine=bestfit_scipy, **kwargs):
     """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
     This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
     target: parameter of lf to constrain
@@ -193,7 +202,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
     if len(space) == 1:
         dim, x = space[0]
         for q in x:
-            lf_kwargs = {dim:q}
+            lf_kwargs = {dim: q}
             lf_kwargs.update(kwargs)
             results.append(bestfit_scipy(lf, **lf_kwargs)[1])
         results = np.array(results)
@@ -210,7 +219,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
         for z1 in tqdm(x):
             results.append([])
             for z2 in y:
-                lf_kwargs = {dims[0]:z1, dims[1]:z2}
+                lf_kwargs = {dims[0]: z1, dims[1]: z2}
                 lf_kwargs.update(kwargs)
                 results[-1].append(bestfit_scipy(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)

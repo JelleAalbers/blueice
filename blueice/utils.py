@@ -3,7 +3,6 @@ import os
 import pickle
 from hashlib import sha1
 
-from tqdm import tqdm
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -13,7 +12,7 @@ def inherit_docstring_from(cls):
     https://groups.google.com/forum/#!msg/comp.lang.python/HkB1uhDcvdk/lWzWtPy09yYJ
     """
     def docstring_inheriting_decorator(fn):
-        fn.__doc__ = getattr(cls,fn.__name__).__doc__
+        fn.__doc__ = getattr(cls, fn.__name__).__doc__
         return fn
     return docstring_inheriting_decorator
 

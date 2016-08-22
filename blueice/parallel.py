@@ -1,6 +1,7 @@
 from tqdm import tqdm
 from .model import Model
 
+
 def create_models_in_parallel(configs, ipp_client=None, block=False):
     """Return Models for each configuration in configs.
     :param ipp_client: ipyparallel client to use for parallelized computation, or None (in which case models will be

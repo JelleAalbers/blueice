@@ -148,36 +148,36 @@ def latin(n, d, box=None, shuffle_steps=500):
     Stolen from https://github.com/paulknysh/blackbox
     """
     # starting with diagonal shape
-    pts=np.ones((n,d))
+    pts = np.ones((n, d))
 
     for i in range(n):
-        pts[i]=pts[i]*i/(n-1.)
+        pts[i] = pts[i] * i / (n-1.)
 
     # spread function
     def spread(p):
-        s=0.
+        s = 0.
         for i in range(n):
             for j in range(n):
                 if i > j:
-                    s=s+1./np.linalg.norm(np.subtract(p[i],p[j]))
+                    s = s + 1. / np.linalg.norm(np.subtract(p[i], p[j]))
         return s
 
     # minimizing spread function by shuffling
-    currminspread=spread(pts)
+    currminspread = spread(pts)
 
     for m in tqdm(range(shuffle_steps), desc='Shuffling latin hypercube'):
 
-        p1=np.random.randint(n)
-        p2=np.random.randint(n)
-        k=np.random.randint(d)
+        p1 = np.random.randint(n)
+        p2 = np.random.randint(n)
+        k = np.random.randint(d)
 
-        newpts=np.copy(pts)
-        newpts[p1,k],newpts[p2,k]=newpts[p2,k],newpts[p1,k]
-        newspread=spread(newpts)
+        newpts = np.copy(pts)
+        newpts[p1, k], newpts[p2, k] = newpts[p2, k], newpts[p1, k]
+        newspread = spread(newpts)
 
-        if newspread<currminspread:
-            pts=np.copy(newpts)
-            currminspread=newspread
+        if newspread < currminspread:
+            pts = np.copy(newpts)
+            currminspread = newspread
 
     if box is None:
         return pts

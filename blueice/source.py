@@ -67,8 +67,7 @@ class Source(object):
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
         if not self.from_cache:
-            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']},
-                               self._cache_filename)
+            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']}, self._cache_filename)
         return self._cache_filename
 
     def pdf(self, *args):
@@ -96,7 +95,7 @@ class DensityEstimatingSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-                                     ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range']
+            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range']
         self.pdf_has_been_computed = False
         Source.__init__(self, config)
 
