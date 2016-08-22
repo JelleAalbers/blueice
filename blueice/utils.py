@@ -98,18 +98,41 @@ class InterpolateAndExtrapolate1D(object):
     """Extends scipy.interpolate.interp1d to do constant extrapolation outside of the data range
     """
     def __init__(self, points, values):
-        points = np.asarray(points)
-        self.interpolator = interp1d(points, values)
-        self.min = points.min()
-        self.max = points.max()
-
-    def __call__(self, points):
+        # Support for scalar arguments
         try:
             points[0]
         except (TypeError, IndexError):
             points = np.array([points])
+        try:
+            values[0]
+        except (TypeError, IndexError):
+            values = np.array([values])
+        points = np.asarray(points)
+
+        assert len(points) == len(values)
+        if len(points) == 1:
+            self.interpolator = lambda x: np.ones(len(x)) * values[0]
+        else:
+            self.interpolator = interp1d(points, values)
+        self.min = points.min()
+        self.max = points.max()
+
+    def __call__(self, points):
+        # Support for scalar arguments
+        give_scalar = False
+        try:
+            points[0]
+        except (TypeError, IndexError):
+
+            points = np.array([points])
+
         points = np.clip(points, self.min, self.max)
-        return self.interpolator(points)
+
+        result = self.interpolator(points)
+
+        if give_scalar:
+            return result[0]
+        return result
 
 
 def arrays_to_grid(arrs):

@@ -211,7 +211,7 @@ class LogLikelihood(object):
         if parameter_name in self.shape_parameters:
             anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
             return min(anchor_settings), max(anchor_settings)
-        elif parameter_name.endswith('_rate'):
+        elif parameter_name.endswith('_rate_multiplier'):
             return 0, float('inf')
         else:
             raise ValueError("Non-existing parameter %s" % parameter_name)
