@@ -1,5 +1,6 @@
 from blueice.test_helpers import *
 from blueice.model import Model
+import matplotlib.pyplot as plt
 
 def test_rates():
     m = Model(test_conf(n_sources=1))
@@ -24,8 +25,18 @@ def test_rates():
     m = Model(conf)
     np.testing.assert_array_equal(m.expected_events(), np.array([2000, 2000]))
 
+    # Test get source
+    assert m.get_source(1) == m.sources[1]
+    assert m.get_source_i(1) == 1
+    assert m.get_source_i('s1') == 1
+    assert m.get_source('s1') == m.sources[1]
+
     # Test non-numeric settings
     conf = test_conf(n_sources=1)
     conf['strlen_multiplier'] = 'hi'
     m = Model(conf)
     np.testing.assert_array_equal(m.expected_events(), np.array([2000]))
+
+    # Test the "Model.show" function
+    m.show(m.simulate())
+    plt.close()

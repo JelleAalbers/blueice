@@ -17,6 +17,21 @@ def test_likelihood_value():
     assert lf(s0_rate_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0))
 
 
+def test_no_shape_params():
+    lf = LogLikelihood(test_conf())
+    d = lf.base_model.simulate()
+    lf.prepare()
+    lf.set_data(d)
+    lf()
+
+    # Test a MonteCarloSource, which should trigger a pdf computation
+    lf = LogLikelihood(test_conf(mc=True))
+    d = lf.base_model.simulate()
+    lf.prepare()
+    lf.set_data(d)
+    lf()
+
+
 def test_shape_params():
     lf = LogLikelihood(test_conf(n_sources=1))
     lf.add_rate_parameter('s0')

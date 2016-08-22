@@ -1,10 +1,36 @@
+from copy import deepcopy
 import os
-from hashlib import sha1
 import pickle
+from hashlib import sha1
 
-import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d
+
+
+def inherit_docstring_from(cls):
+    """Decorator for inheriting doc strings, stolen from
+    https://groups.google.com/forum/#!msg/comp.lang.python/HkB1uhDcvdk/lWzWtPy09yYJ
+    """
+    def docstring_inheriting_decorator(fn):
+        fn.__doc__ = getattr(cls, fn.__name__).__doc__
+        return fn
+    return docstring_inheriting_decorator
+
+
+def combine_dicts(*args, exclude=(), deep_copy=False):
+    """Returns a new dict with entries from all dicts passed, with later dicts overriding earlier ones.
+    :param exclude: Remove these keys from the result.
+    :param deepcopy: Perform a deepcopy of the dicts before combining them.
+    """
+    if not len(args):
+        return dict()
+    result = {}
+    for d in args:
+        if deep_copy:
+            d = deepcopy(d)
+        result.update(d)
+    result = {k: v for k, v in result.items() if k not in exclude}
+    return result
 
 
 def data_file_name(filename, data_dirs=None):
@@ -20,6 +46,8 @@ def find_file_in_folders(filename, folders):
     """Searches for filename in folders, then return full path or raise FileNotFoundError
     Does not recurse into subdirectories
     """
+    if isinstance(folders, str):
+        folders = [folders]
     for folder in folders:
         full_path = os.path.join(folder, filename)
         if os.path.exists(full_path):
@@ -27,16 +55,10 @@ def find_file_in_folders(filename, folders):
     raise FileNotFoundError(filename)
 
 
-def load_pickle(filename, data_dirs=None):
-    """Loads a pickle from filename"""
-    with open(data_file_name(filename, data_dirs), mode='rb') as infile:
-        return pickle.load(infile)
-
-
-def load_csv(filename, data_dirs=None):
-    """Read csv file and return numpy float arrays x, y"""
-    return pd.read_csv(data_file_name(filename, data_dirs),
-                       delimiter=',', names=['x', 'y'], comment='#').values[1:].astype(np.float).T
+def read_pickle(filename):
+    with open(filename, mode='rb') as infile:
+        result = pickle.load(infile)
+    return result
 
 
 def save_pickle(stuff, filename):
@@ -67,84 +89,53 @@ def deterministic_hash(thing):
     return sha1(pickle.dumps(hashablize(thing))).hexdigest()
 
 
-def process_files_in_config(config, data_dirs):
-    """Replaces file name values in dictionary config with their files.
-    Modifies config in-place
-    """
-    for k, v in config.items():
-        if isinstance(v, str):
-            _, ext = os.path.splitext(v)
-            if ext == '.pkl':
-                config[k] = load_pickle(v, data_dirs)
-            elif ext == '.csv':
-                config[k] = load_csv(v, data_dirs)
-            # Add support for other formats here
+def _events_to_analysis_dimensions(events, analysis_space):
+    """Return a list of arrays of the values of events in each of the analysis dimensions specified in analysis_space"""
+    return [events[x] for x, bins in analysis_space]
 
 
 class InterpolateAndExtrapolate1D(object):
     """Extends scipy.interpolate.interp1d to do constant extrapolation outside of the data range
     """
     def __init__(self, points, values):
-        points = np.asarray(points)
-        self.interpolator = interp1d(points, values)
-        self.min = points.min()
-        self.max = points.max()
-
-    def __call__(self, points):
+        # Support for scalar arguments
         try:
             points[0]
         except (TypeError, IndexError):
             points = np.array([points])
+        try:
+            values[0]
+        except (TypeError, IndexError):
+            values = np.array([values])
+        points = np.asarray(points)
+
+        assert len(points) == len(values)
+        if len(points) == 1:
+            self.interpolator = lambda x: np.ones(len(x)) * values[0]
+        else:
+            self.interpolator = interp1d(points, values)
+        self.min = points.min()
+        self.max = points.max()
+
+    def __call__(self, points):
+        # Support for scalar arguments
+        give_scalar = False
+        try:
+            points[0]
+        except (TypeError, IndexError):
+
+            points = np.array([points])
+
         points = np.clip(points, self.min, self.max)
-        return self.interpolator(points)
+
+        result = self.interpolator(points)
+
+        if give_scalar:
+            return result[0]
+        return result
 
 
 def arrays_to_grid(arrs):
     """Convert a list of n 1-dim arrays to an n+1-dim. array, where last dimension denotes coordinate values at point.
     """
     return np.stack(np.meshgrid(*arrs, indexing='ij'), axis=-1)
-
-
-def latin(n, d, box=None, shuffle_steps=500):
-    """Creates a latin hypercube of n points in d dimensions
-    Stolen from https://github.com/paulknysh/blackbox
-    """
-    # starting with diagonal shape
-    pts=np.ones((n,d))
-
-    for i in range(n):
-        pts[i]=pts[i]*i/(n-1.)
-
-    # spread function
-    def spread(p):
-        s=0.
-        for i in range(n):
-            for j in range(n):
-                if i > j:
-                    s=s+1./np.linalg.norm(np.subtract(p[i],p[j]))
-        return s
-
-    # minimizing spread function by shuffling
-    currminspread=spread(pts)
-
-    for m in tqdm(range(shuffle_steps), desc='Shuffling latin hypercube'):
-
-        p1=np.random.randint(n)
-        p2=np.random.randint(n)
-        k=np.random.randint(d)
-
-        newpts=np.copy(pts)
-        newpts[p1,k],newpts[p2,k]=newpts[p2,k],newpts[p1,k]
-        newspread=spread(newpts)
-
-        if newspread<currminspread:
-            pts=np.copy(newpts)
-            currminspread=newspread
-
-    if box is None:
-        return pts
-
-    for i in range(len(box)):
-        pts[:, i] = box[i][0] + pts[:, i] * (box[i][1] - box[i][0])
-
-    return pts
