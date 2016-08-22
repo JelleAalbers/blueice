@@ -159,8 +159,10 @@ def one_parameter_interval(lf, target, bound,
         """(profile) likelihood ratio test statistic, with critical_value subtracted
         critical_quantile: fraction (percentile/100) of the test statistic distribution you want to find
         """
-        # Note stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2 CL - 1)))
-        # So stats.norm.ppf(0.9)**2 = stats.chi2(1).ppf(0.8)
+        # "But I thought I there was a chi2 in Wilk's theorem!" Quite right, but
+        # stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2*CL - 1)
+        # So the chi2 formula is often quoted for central CI's, the normal one for bounds...
+        # This cost me hours of confusion. Please explain this to your students if you're statistics professor.
         critical_value = stats.norm.ppf(critical_quantile) ** 2
 
         if kind == 'upper' and hypothesis <= global_best:
