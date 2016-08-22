@@ -30,7 +30,9 @@ class Model(object):
             conf = utils.combine_dicts(self.config,
                                        source_config,
                                        exclude=['sources', 'default_source_class', 'class'])
-            self.sources.append(source_class(conf))
+            s = source_class(conf)
+            s.compute_pdf()
+            self.sources.append(s)
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
     def get_source(self, source_id):

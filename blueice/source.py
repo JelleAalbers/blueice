@@ -70,6 +70,10 @@ class Source(object):
 
         self.config = c
 
+    def compute_pdf(self):
+        """If anything needs to be done to compute the PDF, but after the config has been initialized, do it here"""
+        pass
+
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
         if not self.from_cache:
@@ -103,7 +107,7 @@ class DensityEstimatingSource(Source):
         config['cache_attributes'] = config.get('cache_attributes', []) + \
             ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range']
         self.pdf_has_been_computed = False
-        Source.__init__(self, config)
+        Source.__init__(self, config, *args, **kwargs)
 
     def compute_pdf(self):
         if not self.from_cache:
@@ -147,6 +151,7 @@ class DensityEstimatingSource(Source):
 
         self.save_to_cache()
         self.pdf_has_been_computed = True
+        super().compute_pdf()
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
@@ -187,7 +192,7 @@ class MonteCarloSource(DensityEstimatingSource):
                         pdf_sampling_batch_size=1e6)
         config = utils.combine_dicts(defaults, config)
         config['dont_hash_settings'] = config.get('dont_hash_settings', []) + ['pdf_sampling_batch_size']
-        DensityEstimatingSource.__init__(self, config)
+        DensityEstimatingSource.__init__(self, config, *args, **kwargs)
 
     def get_events_for_density_estimate(self):
         # Simulate batches of events at a time (to avoid memory errors, show a progressbar, and split up among machines)

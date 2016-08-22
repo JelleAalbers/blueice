@@ -26,5 +26,8 @@ def create_models_in_parallel(configs, ipp_client=None, block=False):
                       total=len(configs)):
             pass
 
-    # (Re)make the models in the main process; hopefully PDFs use the cache...
-    return [Model(conf) for conf in configs]
+        # (Re)make the models in the main process; hopefully PDFs use the cache...
+        return [Model(conf) for conf in configs]
+
+    else:
+        return [Model(conf) for conf in tqdm(configs, 'Computing models on one core')]
