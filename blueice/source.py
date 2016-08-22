@@ -23,6 +23,7 @@ class Source(object):
                         # List of names of settings which are not included in the hash. These should be all settings
                         # that have no impact on the pdf (e.g. whether to show progress bars or not).
                         dont_hash_settings=[],
+                        extra_dont_hash_settings=[],
 
                         # List of attributes you want to be stored in cache. When the same config is passed later
                         # (ignoreing the dont_hash_settings), these attributes will be set from the cached file.
@@ -33,7 +34,12 @@ class Source(object):
                         cache_dir='pdf_cache',
                         )
         c = utils.combine_dicts(defaults, config)
-        c['dont_hash_settings'] += ['force_recalculation', 'dont_hash_settings', 'label', 'color']
+        c['dont_hash_settings'] += ['force_recalculation', 'dont_hash_settings', 'label', 'color',
+                                    'extra_dont_hash_settings']
+
+        # Merge the 'extra' (per-source) dont hash settings into the normal dont_hash_settings
+        c['dont_hash_settings'] += c['extra_dont_hash_settings']
+        del c['extra_dont_hash_settings']
 
         # Name becomes an attribute.
         self.name = c['name']
@@ -109,11 +115,11 @@ class DensityEstimatingSource(Source):
             get = self.get_events_for_density_estimate
             if not inspect.isgeneratorfunction(get):
                 def get():
-                    yield self.get_events_for_density_estimate()
+                    return self.get_events_for_density_estimate()
 
             n_events = 0
-            for events in get():
-                n_events += len(events)
+            for events, n_simulated in get():
+                n_events += n_simulated
                 mh.add(*utils._events_to_analysis_dimensions(events, self.config['analysis_space']))
 
             self.fraction_in_range = mh.n / n_events
@@ -164,7 +170,9 @@ class DensityEstimatingSource(Source):
             raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
 
     def get_events_for_density_estimate(self):
-        """Return, or yield in batches, events for use in density estimation"""
+        """Return, or yield in batches, (events for use in density estimation, events simulated/read)
+        Passing the count is necessary because you sometimes work with simulators that already cut some events.
+        """
         raise NotImplementedError
 
 
@@ -189,4 +197,6 @@ class MonteCarloSource(DensityEstimatingSource):
         if n_events <= batch_size:
             batch_size = n_events
 
-        yield self.simulate(n_events=batch_size)
+        for _ in range(int(n_events // batch_size)):
+            result = self.simulate(n_events=batch_size)
+            yield result, batch_size
