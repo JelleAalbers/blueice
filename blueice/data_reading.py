@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import pandas as pd
 import numpy as np
@@ -12,25 +13,34 @@ def read_csv(filename):
     return result
 
 
-FILE_READERS = {'pkl': read_pickle, 'csv': read_csv}
+FILE_READERS = {'.pkl': read_pickle, '.csv': read_csv}
 CACHE = dict()
 
 
-def read_if_is_filename(x, data_dirs=tuple('.')):
-    """If x is a string that ends in a supported extension, return the file contents, else return x.
+def read_files_in(d, data_dirs=tuple('.')):
+    """Return a new dictionary in which every value in d that is a string that ends in a supported extension
+    is replaced with that file's contents. Leave other keys alone.
     A cache is maintained to ensure things are only read once.
     :param data_dirs: directories to look for files. Defaults to '.'.
     """
+    d = deepcopy(d)
     global CACHE
-    if not isinstance(x, str):
-        return x
-    if x in CACHE:
-        return CACHE[x]
-    _, extension = os.path.splitext(x)
 
-    if extension not in FILE_READERS:
-        return x
+    for k, x in d.items():
+        if not isinstance(x, str):
+            continue
 
-    contents = data_file_name(x, data_dirs)
-    CACHE[x] = contents
-    return contents
+        _, extension = os.path.splitext(x)
+
+        if extension not in FILE_READERS:
+            continue
+
+        # Convert x to the full path
+        x = data_file_name(x, data_dirs)
+
+        if x in CACHE:
+            d[k] = CACHE[x]
+        else:
+            d[k] = CACHE[x] = FILE_READERS[extension](x)
+
+    return d

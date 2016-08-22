@@ -92,7 +92,7 @@ class Model(object):
         ax: plot on this Axes
         Dims: numbers of dimension(s) to plot in. Can be up to two dimensions.
         """
-        bins, dim_names = zip(*self.config['analysis_space'])
+        dim_names, bins = zip(*self.config['analysis_space'])
 
         if dims is None:
             if len(bins) == 1:
@@ -102,13 +102,12 @@ class Model(object):
         if ax is None:
             ax = plt.gca()
 
-        # d = self.range_cut(d)   # Not needed, simulate already does this
         for s_i, s in enumerate(self.sources):
             q = d[d['source'] == s_i]
             q_in_space = self.to_analysis_dimensions(q)
             ax.scatter(q_in_space[dims[0]],
                        q_in_space[dims[1]] if len(dims) > 1 else np.zeros(len(q)),
-                       color=s.color, s=5, label=s.label)
+                       color=s.config['color'], s=5, label=s.config['label'])
 
         ax.set_xlabel(dim_names[dims[0]])
         ax.set_xlim(bins[dims[0]][0], bins[dims[0]][-1])

@@ -7,7 +7,7 @@ from multihist import Histdd
 from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
-from .data_reading import read_if_is_filename
+from .data_reading import read_files_in
 
 
 class Source(object):
@@ -60,7 +60,7 @@ class Source(object):
             self.from_cache = False
 
         # Convert any filename-valued settings to whatever is in those files.
-        c = {k: read_if_is_filename(v) for k, v in c.items()}
+        c = read_files_in(c, config['data_dirs'])
 
         self.config = c
 

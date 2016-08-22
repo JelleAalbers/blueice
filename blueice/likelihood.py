@@ -32,7 +32,9 @@ class LogLikelihood(object):
         self.config.setdefault('morpher', 'GridInterpolator')
 
         self.pdf_base_config = pdf_base_config
-        self.base_model = None          # Base model: no variations of any settings
+        self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
+        self.source_list = [s.name for s in self.base_model.sources]
+
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
         # where anchors is dict: representative number -> actual setting
@@ -40,7 +42,6 @@ class LogLikelihood(object):
         # base_value is the default z-score that will be used.
         # We'll take care of sorting the keys in self.prepare()
 
-        self.source_list = []
         self.is_prepared = False
         self.is_data_set = False
 
@@ -52,41 +53,36 @@ class LogLikelihood(object):
         self.mu_interpolator = None     # function mapping z scores -> rates for each source
         self.ps_interpolator = None     # function mapping z scores -> (source, event) p-values
 
-        # Compute the base model.
-        self.base_model = Model(self.pdf_base_config)
-        self.source_list = [s.name for s in self.base_model.sources]
-
     def prepare(self, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
         This will  compute the models for each shape parameters anchor value combination.
         """
-        if not len(self.shape_parameters):
-            return
-        self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
-                                                        self.shape_parameters)
-        zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
+        if len(self.shape_parameters):
+            self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
+                                                            self.shape_parameters)
+            zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
 
-        # Create the configs for each new model
-        configs = []
-        for zs in zs_list:
-            config = deepcopy(self.pdf_base_config)
-            for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
-                # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
-                config[setting_name] = anchors[zs[i]]
-            configs.append(config)
+            # Create the configs for each new model
+            configs = []
+            for zs in zs_list:
+                config = deepcopy(self.pdf_base_config)
+                for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
+                    # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
+                    config[setting_name] = anchors[zs[i]]
+                configs.append(config)
 
-        # Create the new models
-        models = create_models_in_parallel(configs, ipp_client,
-                                           block=self.config.get('block_during_paralellization', False))
+            # Create the new models
+            models = create_models_in_parallel(configs, ipp_client,
+                                               block=self.config.get('block_during_paralellization', False))
 
-        # Add the new models to the anchor_models dict
-        for zs, model in zip(zs_list, models):
-            self.anchor_models[tuple(zs)] = model
+            # Add the new models to the anchor_models dict
+            for zs, model in zip(zs_list, models):
+                self.anchor_models[tuple(zs)] = model
 
-        # Build the interpolator for the rates of each source.
-        self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
-                                                               extra_dims=[len(self.source_list)],
-                                                               anchor_models=self.anchor_models)
+            # Build the interpolator for the rates of each source.
+            self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
+                                                                   extra_dims=[len(self.source_list)],
+                                                                   anchor_models=self.anchor_models)
 
         self.is_data_set = False
         self.is_prepared = True
