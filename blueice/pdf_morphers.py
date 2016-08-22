@@ -117,6 +117,7 @@ class RadialInterpolator(Morpher):
 
         return zs_list
 
+    @inherit_docstring_from(Morpher)
     def make_interpolator(self, f, extra_dims, anchor_models):
         anchor_scores = np.array([f(m) for m in anchor_models.values()])
 
