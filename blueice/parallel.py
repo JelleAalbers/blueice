@@ -12,22 +12,21 @@ def create_models_in_parallel(configs, ipp_client=None, block=False):
     :return: list of Models.
     """
     if ipp_client is not None:
-        # Fully fledged blueice Models don't pickle, so we have to construct them again later in the main process
-        # (but then we can just grab their PDFs from cache, so it's quick)
+        # Fully fledged blueice Models don't pickle, but we can use dill..
+        ipp_client[:].use_dill()
 
         def compute_model(conf):
-            Model(conf)
-            return None
+            return Model(conf)
 
-        asyncresult = ipp_client.load_balanced_view().map(compute_model, configs, ordered=False, block=block)
-        for _ in tqdm(asyncresult,
+        asyncresult = ipp_client.load_balanced_view().map(compute_model, configs, ordered=True, block=block)
+        result = []
+        for m in tqdm(asyncresult,
                       desc="Computing models in parallel",
-                      smoothing=0,   # Show average speed, instantaneous speed is extremely variable
+                      smoothing=0,  # Show average speed, instantaneous speed is extremely variable
                       total=len(configs)):
-            pass
+            result.append(m)
 
-        # (Re)make the models in the main process; hopefully PDFs use the cache...
-        return [Model(conf) for conf in configs]
+        return result
 
     else:
         return [Model(conf) for conf in tqdm(configs, 'Computing models on one core')]
