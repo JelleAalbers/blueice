@@ -56,16 +56,19 @@ class Model(object):
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
         return d[mask]
 
-    def simulate(self, restrict=True, rate_multipliers=None):
-        """Makes a toy dataset.
-        if restrict=True, return only events inside analysis range
+    def simulate(self, restrict=True, rate_multipliers=None, livetime_days=None):
+        """Makes a toy dataset, poisson sampling simulated events from all sources.
+        :param restrict: if True, return only events inside the analysis range
+        :param rate_multipliers: dict {source name: multiplier} to change rate of individual sources
+        :param livetime_days: days of exposure to simulate (affects rate of all sources)
         """
         if rate_multipliers is None:
             rate_multipliers = dict()
         ds = []
         for s_i, source in enumerate(self.sources):
-            d = source.simulate(np.random.poisson(source.events_per_day * self.config['livetime_days'] *
-                                                  rate_multipliers.get(source.name, 1)))
+            mu = source.events_per_day * rate_multipliers.get(source.name, 1)
+            mu *= livetime_days if livetime_days is not None else self.config['livetime_days']
+            d = source.simulate(np.random.poisson(mu))
             d['source'] = s_i
             ds.append(d)
         d = np.concatenate(ds)

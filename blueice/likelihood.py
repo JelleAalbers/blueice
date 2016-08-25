@@ -140,7 +140,11 @@ class LogLikelihood(object):
 
         self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
 
-    def __call__(self, **kwargs):
+    def __call__(self, livetime_days=None, **kwargs):
+        """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
+        For rate uncertainties, pass sourcename_rate_multiplier.
+        :param lifetime_days: lifetime in days to use, will affect rates of all sources.
+        """
         if not self.is_data_set:
             raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
@@ -192,6 +196,10 @@ class LogLikelihood(object):
             log_prior = self.rate_parameters.get(source_name, None)
             if log_prior is not None:
                 result += log_prior(rate_multiplier)
+
+        # Apply the lifetime scaling
+        if livetime_days is not None:
+            mus *= livetime_days / self.pdf_base_config['livetime_days']
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus >= 0) & (mus < float('inf'))):
