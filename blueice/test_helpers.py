@@ -41,7 +41,7 @@ class GaussianSource(GaussianSourceBase):
 class GaussianMCSource(GaussianSourceBase, MonteCarloSource):
     """Analog of GaussianSource which generates its PDF from MC
     """
-    n_events_for_pdf = int(1e5)
+    n_events_for_pdf = int(1e6)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -313,11 +313,9 @@ class BinnedLogLikelihood(LogLikelihood):
         for mu, p_bin_source in zip(mus, p_bins):
             p_bin_source *= mu
 
-        mu_bins = np.sum(p_bin_source, axis = 0)
+        mu_bins = np.sum(p_bins, axis = 0)
 
         n_bins = self.n_hist.histogram
-
-
     
         ret = n_bins * np.log(mu_bins) - mu_bins - loggamma(n_bins + 1.).real
         return np.sum(ret)
