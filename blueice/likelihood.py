@@ -7,6 +7,7 @@ from scipy import stats
 from .model import Model
 from .parallel import create_models_in_parallel
 from .pdf_morphers import MORPHERS
+from .utils import combine_dicts
 
 
 class LogLikelihood(object):
@@ -25,13 +26,14 @@ class LogLikelihood(object):
         :param kwargs: Overrides for pdf_base_config, not likelihood config!
         :return:
         """
-        pdf_base_config.update(kwargs)
+        self.pdf_base_config = combine_dicts(pdf_base_config, kwargs, deep_copy=True)
+
         if likelihood_config is None:
             likelihood_config = {}
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-        self.pdf_base_config = pdf_base_config
+
         self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
         self.source_list = [s.name for s in self.base_model.sources]
 
