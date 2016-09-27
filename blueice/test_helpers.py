@@ -52,7 +52,7 @@ class GaussianMCSource(GaussianSourceBase, MonteCarloSource):
 
 
 BASE_CONFIG = dict(
-    sources=[{'name': 's0'}],
+    sources=[{'name': 's0','events_per_day':1000.}],
     mu=0,
     strlen_multiplier='q',
     sigma=1,

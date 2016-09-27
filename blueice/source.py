@@ -113,7 +113,7 @@ class DensityEstimatingSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range']
+            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range','_bin_volumes']
         self.pdf_has_been_computed = False
         Source.__init__(self, config, *args, **kwargs)
 
@@ -184,7 +184,7 @@ class DensityEstimatingSource(Source):
             raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
 
     def get_pmf_grid(self):
-        return self._pdf_histogram * self._bin_volumes, self._pdf_errors * self._bin_volumes
+        return self._pdf_histogram.histogram * self._bin_volumes, self._pdf_errors.histogram * self._bin_volumes
 
     def get_events_for_density_estimate(self):
         """Return, or yield in batches, (events for use in density estimation, events simulated/read)

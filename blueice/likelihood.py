@@ -3,6 +3,8 @@ from copy import deepcopy
 
 import numpy as np
 from scipy import stats
+from scipy.special import loggamma
+from multihist import Histdd
 
 from .model import Model
 from .parallel import create_models_in_parallel
@@ -94,9 +96,14 @@ class LogLikelihood(object):
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
-        if not self.is_prepared and len(self.shape_parameters):
-            raise NotPreparedException("You have shape parameters in your model: "
+        if not self.is_prepared:
+            if len(self.shape_parameters):
+                raise NotPreparedException("You have shape parameters in your model: "
                                        "first do .prepare(), then set the data.")
+            else:
+                self.prepare()
+
+
         self._prepare_data(d)
 
         self.is_data_set = True
@@ -294,12 +301,26 @@ class BinnedLogLikelihood(LogLikelihood):
     def _prepare_data(self, d):
         """Called in set_data, specific to type of likelihood"""
         # Bin the data in the analysis space
-        raise NotImplementedError
+        dimnames, bins = zip(*self.base_model.config['analysis_space'])
+        self.n_hist = Histdd(bins=bins, axis_names=dimnames)
+
+        self.n_hist.add(*self.base_model.to_analysis_dimensions(d))
+
+    def _compute_likelihood(self, mus, pmfs):
+        #Return log likelihood (binned) 
+        p_bins = pmfs.copy()
+
+        for mu, p_bin_source in zip(mus, p_bins):
+            p_bin_source *= mu
+
+        mu_bins = np.sum(p_bin_source, axis = 0)
+
+        n_bins = self.n_hist.histogram
 
 
-
-
-
+    
+        ret = n_bins * np.log(mu_bins) - mu_bins - loggamma(n_bins + 1.).real
+        return np.sum(ret)
 
 
 class NotPreparedException(Exception):
