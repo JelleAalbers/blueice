@@ -127,7 +127,7 @@ class DensityEstimatingSource(Source):
             get = self.get_events_for_density_estimate
             if not inspect.isgeneratorfunction(get):
                 def get():
-                    return self.get_events_for_density_estimate()
+                    return [self.get_events_for_density_estimate()]
 
             n_events = 0
             for events, n_simulated in get():
