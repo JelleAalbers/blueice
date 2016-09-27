@@ -84,6 +84,10 @@ class Model(object):
         """Returns array (n_sources, n_events) of pdf values for each source for each of the events"""
         return np.vstack([s.pdf(*self.to_analysis_dimensions(d)) for s in self.sources])
 
+    def pmf_grids(self):
+        """Return array (n_sources, *analysis_space_shape) of integrated PDFs in the analysis space for each source"""
+        return np.stack([s.get_pmf_grid()[0] for s in self.sources])
+
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
         If no source specified, return an array of results for all sources.

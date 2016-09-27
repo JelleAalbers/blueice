@@ -69,3 +69,7 @@ def test_conf(n_sources=1, mc=False):
     if mc:
         conf['default_source_class'] = GaussianMCSource
     return conf
+
+
+def almost_equal(a, b, fraction=1e-6):
+    return abs((a - b)/a) <= fraction

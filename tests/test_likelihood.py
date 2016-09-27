@@ -74,8 +74,8 @@ def test_multisource_likelihood():
     assert lf(some_multiplier=1) == lf()
 
     # Equivalence of rate parameters
-    assert lf(s0_rate_multiplier=2) == lf(s1_rate_multiplier=2)
-    assert lf(s0_rate_multiplier=4) == lf(s0_rate_multiplier=2.5, s1_rate_multiplier=2.5)
+    assert almost_equal(lf(s0_rate_multiplier=2), lf(s1_rate_multiplier=2))
+    assert almost_equal(lf(s0_rate_multiplier=4), lf(s0_rate_multiplier=2.5, s1_rate_multiplier=2.5))
 
     # Equivalence of rate and shape parameters
     assert lf(s0_rate_multiplier=2, s1_rate_multiplier=2) == lf(some_multiplier=2)
