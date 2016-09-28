@@ -9,7 +9,7 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = open('requirements.txt').read().splitlines()
-test_requirements = requirements + ['coverage', 'pytest']
+test_requirements = requirements + ['coverage']
 
 setup(name='blueice',
       version='0.4.0',
@@ -24,7 +24,7 @@ setup(name='blueice',
       zip_safe=False,
       keywords='blueice',
       test_suite='tests',
-    install_requires=requirements,
+      install_requires=requirements,
       tests_require=test_requirements,
       setup_requires=['pytest-runner'] + test_requirements,
       classifiers=[

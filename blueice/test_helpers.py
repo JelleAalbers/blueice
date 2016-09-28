@@ -41,7 +41,7 @@ class GaussianSource(GaussianSourceBase):
 class GaussianMCSource(GaussianSourceBase, MonteCarloSource):
     """Analog of GaussianSource which generates its PDF from MC
     """
-    n_events_for_pdf = int(1e5)
+    n_events_for_pdf = int(1e6)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -52,7 +52,7 @@ class GaussianMCSource(GaussianSourceBase, MonteCarloSource):
 
 
 BASE_CONFIG = dict(
-    sources=[{'name': 's0'}],
+    sources=[{'name': 's0','events_per_day':1000.}],
     mu=0,
     strlen_multiplier='q',
     sigma=1,
@@ -69,3 +69,7 @@ def test_conf(n_sources=1, mc=False):
     if mc:
         conf['default_source_class'] = GaussianMCSource
     return conf
+
+
+def almost_equal(a, b, fraction=1e-6):
+    return abs((a - b)/a) <= fraction

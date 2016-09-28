@@ -8,6 +8,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
 from .data_reading import read_files_in
+from .utils import inherit_docstring_from
 
 
 class Source(object):
@@ -83,6 +84,13 @@ class Source(object):
     def pdf(self, *args):
         raise NotImplementedError
 
+    def get_pmf_grid(self, *args):
+        """Returns pmf grid, errors on pdf grid.
+        Only needed for binned likelihoods: if you have an unbinned density estimator, you'll have to write
+        some integration / sampling routine!
+        """
+        raise NotImplementedError
+
     def simulate(self, n_events):
         raise NotImplementedError
 
@@ -105,7 +113,7 @@ class DensityEstimatingSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range']
+            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range','_bin_volumes']
         self.pdf_has_been_computed = False
         Source.__init__(self, config, *args, **kwargs)
 
@@ -119,7 +127,7 @@ class DensityEstimatingSource(Source):
             get = self.get_events_for_density_estimate
             if not inspect.isgeneratorfunction(get):
                 def get():
-                    return self.get_events_for_density_estimate()
+                    return [self.get_events_for_density_estimate()]
 
             n_events = 0
             for events, n_simulated in get():
@@ -133,12 +141,13 @@ class DensityEstimatingSource(Source):
             #  - the number of events IN RANGE received
             #    (fraction_in_range keeps track of how many events were not in range)
             #  - the bin sizes
-            self._pdf_histogram = mh.similar_blank_hist() / n_events
+            self._pdf_histogram = mh.similar_blank_hist()
             self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
 
             # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
             # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393
-            self._pdf_histogram.histogram /= reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
+            self._bin_volumes = reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
+            self._pdf_histogram.histogram /= self._bin_volumes
 
             # Estimate the MC statistical error. Not used for anything, but good to inspect.
             self._pdf_errors = self._pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
@@ -173,6 +182,9 @@ class DensityEstimatingSource(Source):
 
         else:
             raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
+
+    def get_pmf_grid(self):
+        return self._pdf_histogram.histogram * self._bin_volumes, self._pdf_errors.histogram * self._bin_volumes
 
     def get_events_for_density_estimate(self):
         """Return, or yield in batches, (events for use in density estimation, events simulated/read)

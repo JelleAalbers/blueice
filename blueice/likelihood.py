@@ -3,6 +3,8 @@ from copy import deepcopy
 
 import numpy as np
 from scipy import stats
+from scipy.special import loggamma
+from multihist import Histdd
 
 from .model import Model
 from .parallel import create_models_in_parallel
@@ -85,6 +87,7 @@ class LogLikelihood(object):
             self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
                                                                    extra_dims=[len(self.source_list)],
                                                                    anchor_models=self.anchor_models)
+        self._prepare_for_data()
 
         self.is_data_set = False
         self.is_prepared = True
@@ -95,17 +98,29 @@ class LogLikelihood(object):
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
-        if not self.is_prepared and len(self.shape_parameters):
-            raise NotPreparedException("You have shape parameters in your model: "
+        if not self.is_prepared:
+            if len(self.shape_parameters):
+                raise NotPreparedException("You have shape parameters in your model: "
                                        "first do .prepare(), then set the data.")
+            else:
+                self.prepare()
+
+
+        self._prepare_data(d)
+
+        self.is_data_set = True
+
+    def _prepare_for_data(self):
+        pass
+
+    def _prepare_data(self, d):
+        """Called in set_data, specific to type of likelihood"""
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
                                                                   extra_dims=[len(self.source_list), len(d)],
                                                                   anchor_models=self.anchor_models)
         else:
             self.ps = self.base_model.score_events(d)
-
-        self.is_data_set = True
 
     def add_rate_parameter(self, source_name, log_prior=None):
         """Add a rate parameter names source_name + "_rate_multiplier" to the likelihood function..
@@ -150,8 +165,6 @@ class LogLikelihood(object):
         if not self.is_data_set:
             raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
-
-        # TODO: Validate arguments
 
         if len(self.shape_parameters):
             # Get the shape parameter z values
@@ -211,8 +224,12 @@ class LogLikelihood(object):
                 return -float('inf')
 
         # Get the loglikelihood. At last!
-        result += extended_loglikelihood(mus, ps, outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
+        result += self._compute_likelihood(mus, ps)
         return result
+
+    def _compute_likelihood(self, mus, pdf_values_at_events):
+        return extended_loglikelihood(mus, pdf_values_at_events,
+                                      outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
 
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
@@ -250,7 +267,15 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
     """Evaluate an extended likelihood function
     :param mu: array of n_sources: expected number of events
     :param ps: array of (n_sources, n_events): pdf value for each source and event
-    :param outlier_likelihood: if an event has p=0, give it this likelihood (instead of 0, which makes the whole
+    :param outlier_li        if len(self.shape_parameters):
+            self.pmf_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids())
+
+            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
+                                                                  extra_dims=[len(self.source_list), len(d)],
+                                                                  anchor_models=self.anchor_models)
+        else:
+            self.ps = self.base_model.score_events(d)
+kelihood: if an event has p=0, give it this likelihood (instead of 0, which makes the whole
     loglikelihood infinite)
     :return: ln(likelihood)
     """
@@ -259,6 +284,43 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
         # Replace all likelihoods which are not positive numbers (i.e. 0, negative, or nan) with outlier_likelihood
         p_events[True ^ (p_events > 0)] = outlier_likelihood
     return -mu.sum() + np.sum(np.log(p_events))
+
+
+class BinnedLogLikelihood(LogLikelihood):
+    def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
+        pdf_base_config['pdf_interpolation_method'] = 'piecewise'
+        LogLikelihood.__init__(self, pdf_base_config, likelihood_config, **kwargs)
+
+    def _prepare_for_data(self):
+        self.ps = self.base_model.pmf_grids()
+
+        if len(self.shape_parameters):
+            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids(),
+                                                                  extra_dims=[len(self.source_list)] +
+                                                                              list(self.ps.shape),
+                                                                  anchor_models=self.anchor_models)
+
+    def _prepare_data(self, d):
+        """Called in set_data, specific to type of likelihood"""
+        # Bin the data in the analysis space
+        dimnames, bins = zip(*self.base_model.config['analysis_space'])
+        self.n_hist = Histdd(bins=bins, axis_names=dimnames)
+
+        self.n_hist.add(*self.base_model.to_analysis_dimensions(d))
+
+    def _compute_likelihood(self, mus, pmfs):
+        #Return log likelihood (binned) 
+        p_bins = pmfs.copy()
+
+        for mu, p_bin_source in zip(mus, p_bins):
+            p_bin_source *= mu
+
+        mu_bins = np.sum(p_bins, axis = 0)
+
+        n_bins = self.n_hist.histogram
+    
+        ret = n_bins * np.log(mu_bins) - mu_bins - loggamma(n_bins + 1.).real
+        return np.sum(ret)
 
 
 class NotPreparedException(Exception):
