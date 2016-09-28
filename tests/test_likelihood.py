@@ -1,6 +1,7 @@
 from blueice.test_helpers import *
 from blueice.likelihood import LogLikelihood, InvalidShapeParameter, NotPreparedException
 import pytest
+import scipy.stats as sps
 
 
 def test_likelihood_value():
@@ -102,3 +103,19 @@ def test_early_call():
     lf.set_data(d)
 
     lf()
+
+def test_noninterpolated_pdf():
+    #
+
+    conf = test_conf(n_sources=1)
+    conf['some_multiplier']=3e-3
+    lf = LogLikelihood(conf)
+    lf.add_shape_parameter('mu',(0.,1.))
+    lf.add_shape_parameter('sigma',(1.,2.))
+    lf.prepare()
+
+    d = np.zeros(1,dtype=[('x',np.float)])
+    lf.set_data(d)
+
+    assert almost_equal(lf(compute_pdf=True,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)
+    assert not almost_equal(lf(compute_pdf=False,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)

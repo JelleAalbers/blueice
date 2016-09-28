@@ -106,6 +106,7 @@ class LogLikelihood(object):
                 self.prepare()
 
 
+        self.data = d
         self._prepare_data(d)
 
         self.is_data_set = True
@@ -157,10 +158,29 @@ class LogLikelihood(object):
 
         self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
 
-    def __call__(self, livetime_days=None, **kwargs):
+    def get_setting(self,setting_name, log_prior, base_value, **kwargs):
+        z = kwargs.get(setting_name)
+        if z is None:
+            # Get the default value of the number representing this shape parameter
+            base_setting = self.pdf_base_config.get(setting_name)
+            is_numeric = isinstance(base_setting, (float, int))
+            if is_numeric:
+                assert base_value is None
+                z = base_setting
+            else:
+                z = base_value
+
+        if not isinstance(z, (int, float)):
+            raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
+
+        return z
+
+    def __call__(self, livetime_days=None, compute_pdf=False , **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
         For rate uncertainties, pass sourcename_rate_multiplier.
         :param lifetime_days: lifetime in days to use, will affect rates of all sources.
+        if compute_PDF is True, a new model will be created to compute the pdf at the parameters, otherwise, the pdf will
+            be interpolated form the pdf at the anchor points. 
         """
         if not self.is_data_set:
             raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
@@ -169,35 +189,38 @@ class LogLikelihood(object):
         if len(self.shape_parameters):
             # Get the shape parameter z values
             zs = []
-            for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
-                z = kwargs.get(setting_name)
-                if z is None:
-                    # Get the default value of the number representing this shape parameter
-                    base_setting = self.pdf_base_config.get(setting_name)
-                    is_numeric = isinstance(base_setting, (float, int))
-                    if is_numeric:
-                        assert base_value is None
-                        z = base_setting
-                    else:
-                        z = base_value
+            if compute_pdf:
+                config = deepcopy(self.pdf_base_config)
 
-                if not isinstance(z, (int, float)):
-                    raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
-                zs.append(z)
+                for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
+                    config[setting_name] = self.get_setting(setting_name,
+                                                        log_prior, base_value, **kwargs)
 
-                # Test if the anchor value out of range, if so, return -inf (since is impossible)
-                minbound, maxbound = self.get_bounds(setting_name)
-                if not minbound <= z <= maxbound:
-                    return -float('inf')
+                model = Model(config)
 
-                if log_prior is not None:
-                    result += log_prior(z)
+                mus = model.expected_events()
+                ps = model.score_events(self.data)
 
-            # The RegularGridInterpolators want numpy arrays: give it to them...
-            zs = np.asarray(zs)
 
-            mus = self.mus_interpolator(zs)
-            ps = self.ps_interpolator(zs)
+
+            else:
+                for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
+                    z=self.get_setting(setting_name, log_prior, base_value, **kwargs)
+
+                    zs.append(z)
+                    # Test if the anchor value out of range, if so, return -inf (since is impossible)
+                    minbound, maxbound = self.get_bounds(setting_name)
+                    if not minbound <= z <= maxbound:
+                        return -float('inf')
+
+                    if log_prior is not None:
+                        result += log_prior(z)
+
+                # The RegularGridInterpolators want numpy arrays: give it to them...
+                zs = np.asarray(zs)
+
+                mus = self.mus_interpolator(zs)
+                ps = self.ps_interpolator(zs)
 
         else:
             mus = self.base_model.expected_events()
