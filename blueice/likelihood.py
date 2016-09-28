@@ -37,7 +37,7 @@ class LogLikelihood(object):
 
 
         self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
-        self.source_list = [s.name for s in self.base_model.sources]
+        self.source_name_list = [s.name for s in self.base_model.sources]
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -85,7 +85,7 @@ class LogLikelihood(object):
 
             # Build the interpolator for the rates of each source.
             self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
-                                                                   extra_dims=[len(self.source_list)],
+                                                                   extra_dims=[len(self.source_name_list)],
                                                                    anchor_models=self.anchor_models)
         self._prepare_for_data()
 
@@ -106,7 +106,7 @@ class LogLikelihood(object):
                 self.prepare()
 
 
-        self.data = d
+        self._data = d
         self._prepare_data(d)
 
         self.is_data_set = True
@@ -118,7 +118,7 @@ class LogLikelihood(object):
         """Called in set_data, specific to type of likelihood"""
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
-                                                                  extra_dims=[len(self.source_list), len(d)],
+                                                                  extra_dims=[len(self.source_name_list), len(d)],
                                                                   anchor_models=self.anchor_models)
         else:
             self.ps = self.base_model.score_events(d)
@@ -158,57 +158,65 @@ class LogLikelihood(object):
 
         self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
 
-    def get_setting(self,setting_name, log_prior, base_value, **kwargs):
-        z = kwargs.get(setting_name)
-        if z is None:
-            # Get the default value of the number representing this shape parameter
-            base_setting = self.pdf_base_config.get(setting_name)
-            is_numeric = isinstance(base_setting, (float, int))
-            if is_numeric:
-                assert base_value is None
-                z = base_setting
-            else:
-                z = base_value
-
-        if not isinstance(z, (int, float)):
-            raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
-
-        return z
-
     def __call__(self, livetime_days=None, compute_pdf=False , **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
+        For values not passed, their base values will be assumed.
         For rate uncertainties, pass sourcename_rate_multiplier.
         :param lifetime_days: lifetime in days to use, will affect rates of all sources.
-        if compute_PDF is True, a new model will be created to compute the pdf at the parameters, otherwise, the pdf will
-            be interpolated form the pdf at the anchor points. 
+        :param compute_pdf: compute new PDFs instead of interpolating the PDF at the requested parameters.
         """
         if not self.is_data_set:
             raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
 
-        if len(self.shape_parameters):
-            # Get the shape parameter z values
-            zs = []
-            if compute_pdf:
-                config = deepcopy(self.pdf_base_config)
+        # Validate the kwargs: must be either shape parameters, or <known_source>_rate_multiplier
+        for k in kwargs.keys():
+            if k in self.shape_parameters:
+                continue
+            if k.endswith('_rate_multiplier'):
+                s_name = k[:-16]
+                if s_name in self.source_name_list:
+                    continue
+            raise ValueError("%s is not a known shape or rate parameter!" % k)
 
-                for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
-                    config[setting_name] = self.get_setting(setting_name,
-                                                        log_prior, base_value, **kwargs)
+        if len(self.shape_parameters):
+
+            # Get the z values of all shape parameters.
+            shape_parameter_settings = dict()
+            for setting_name, (_, _, base_value) in self.shape_parameters.items():
+                z = kwargs.get(setting_name)
+
+                if z is None:
+                    # Parameter was not given: get the default value of (the number representing) this shape parameter
+                    base_setting = self.pdf_base_config.get(setting_name)
+                    is_numeric = isinstance(base_setting, (float, int))
+                    if is_numeric:
+                        assert base_value is None
+                        z = base_setting
+                    else:
+                        z = base_value
+
+                if not isinstance(z, (int, float)):
+                    raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
+                shape_parameter_settings[setting_name] = z
+
+            if compute_pdf:
+                # We need to make a new model. Make its config:
+                config = combine_dicts(self.pdf_base_config, shape_parameter_settings, deep_copy=True)
+                config['never_save_to_cache'] = True
 
                 model = Model(config)
-
                 mus = model.expected_events()
-                ps = model.score_events(self.data)
-
-
+                ps = model.score_events(self._data)
 
             else:
-                for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
-                    z=self.get_setting(setting_name, log_prior, base_value, **kwargs)
-
+                # We can use the interpolators. They require the settings to come in order
+                zs = []
+                for setting_name, (_, log_prior, _) in self.shape_parameters.items():
+                    z = shape_parameter_settings[setting_name]
                     zs.append(z)
-                    # Test if the anchor value out of range, if so, return -inf (since is impossible)
+
+                    # Test if the z value is out of range; if so, return -inf (since we can't extrapolate)
                     minbound, maxbound = self.get_bounds(setting_name)
                     if not minbound <= z <= maxbound:
                         return -float('inf')
@@ -223,11 +231,12 @@ class LogLikelihood(object):
                 ps = self.ps_interpolator(zs)
 
         else:
+            # No shape parameters
             mus = self.base_model.expected_events()
             ps = self.ps
 
         # Apply the rate multipliers
-        for source_i, source_name in enumerate(self.source_list):
+        for source_i, source_name in enumerate(self.source_name_list):
             rate_multiplier = kwargs.get(source_name + '_rate_multiplier', 1)
             mus[source_i] *= rate_multiplier
 
@@ -319,8 +328,8 @@ class BinnedLogLikelihood(LogLikelihood):
 
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids(),
-                                                                  extra_dims=[len(self.source_list)] +
-                                                                              list(self.ps.shape),
+                                                                  extra_dims=[len(self.source_name_list)] +
+                                                                             list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
 
     def _prepare_data(self, d):

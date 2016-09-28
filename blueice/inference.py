@@ -100,7 +100,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
     :param minimize_kwargs: dictionary with optimz to minimize
     :param pass_bounds_to_minimizer: if true (default is False), pass bounds to minimizer via the bounds argument.
     This shouldn't be necessary, as the likelihood function returns -inf outside the bounds.
-    I've gotten strange results with scipy's L-BFGS-B, scipy's default method with bounds problems,
+    I've gotten strange results with scipy's L-BFGS-B, scipy's default method with bound problems,
     perhaps it is less well tested?
     If you pass this, I recommend passing a different minimizer method (e.g. TNC or SLSQP).
 
