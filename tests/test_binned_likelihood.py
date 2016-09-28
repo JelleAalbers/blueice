@@ -4,6 +4,7 @@ from blueice.source import DensityEstimatingSource
 
 from scipy import stats
 import numpy as np
+import pytest
 
 
 def test_single_bin():
@@ -109,8 +110,6 @@ def test_multi_bin():
 
         def __init__(self,*args, **kwargs):
             super().__init__(*args,**kwargs)
-            print(self.config.get('strlen_multiplier','x'))
-            print(len(self.config.get('strlen_multiplier','x')))
             if (self.events_per_day == 42):
                 self.events_per_day *=len(self.config.get('strlen_multiplier','x'))
             
@@ -145,12 +144,10 @@ def test_multi_bin():
                         np.sum([stats.poisson(mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
 
-    print("before compute_pdf")
-    assert almost_equal(lf(compute_pdf=True,strlen_multiplier=2),
-                        np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin)
-                                for mu, seen_in_bin in zip(mus, seen)]))
+    with pytest.raises(NotImplementedError):
+        lf(compute_pdf=True,strlen_multiplier=2), np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin) for mu, seen_in_bin in zip(mus, seen)])
 #                        
-    assert almost_equal(lf(compute_pdf=False,strlen_multiplier=2),
+    assert  almost_equal(lf(compute_pdf=False,strlen_multiplier=2),
                         np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
 #

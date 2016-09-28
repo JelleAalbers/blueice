@@ -50,6 +50,7 @@ class LogLikelihoodBase(object):
 
         self.is_prepared = False
         self.is_data_set = False
+        self._has_non_numeric = False
 
         # If there are NO shape parameters:
         self.ps = None                # ps of the data
@@ -140,6 +141,8 @@ class LogLikelihoodBase(object):
                                             "base setting must have a numerical default.")
             anchors = {z: z for z in anchors}
 
+        if not is_numeric: 
+            self._has_non_numeric = True
         if not is_numeric and base_value is None:
             raise InvalidShapeParameter("For non-numeric settings, you must specify what number will represent "
                                         "the default value (the base model setting)")
@@ -147,6 +150,29 @@ class LogLikelihoodBase(object):
             raise InvalidShapeParameter("For numeric settings, base_value is an unnecessary argument.")
 
         self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
+
+    def _compute_single_pdf(self, **kwargs):
+        #fcn to compute a model _at_ the called parameters
+        #to return: mus,ps
+        raise NotImplementedError
+
+    def _get_setting(self,setting_name, log_prior, base_value, **kwargs):
+        z = kwargs.get(setting_name)
+        if z is None:
+            # Get the default value of the number representing this shape parameter
+            base_setting = self.pdf_base_config.get(setting_name)
+            is_numeric = isinstance(base_setting, (float, int))
+            if is_numeric:
+                assert base_value is None
+                z = base_setting
+            else:
+                z = base_value
+
+        if not isinstance(z, (int, float)):
+            raise ValueError("Arguments to likelihood function must be numeric, not %s" % type(z))
+
+        return z
+
 
     def __call__(self, livetime_days=None, compute_pdf=False , **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
@@ -161,15 +187,14 @@ class LogLikelihoodBase(object):
 
         rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
 
+
         if len(self.shape_parameters):
             if compute_pdf:
-                # We need to make a new model. Make its config:
-                config = combine_dicts(self.pdf_base_config, shape_parameter_settings, deep_copy=True)
-                config['never_save_to_cache'] = True
+                if self._has_non_numeric:
+                    raise NotImplementedError("compute_pdf only works for numerical values")
 
-                model = Model(config)
-                mus = model.expected_events()
-                ps = model.score_events(self._data)
+                mus, ps = self._compute_single_pdf(**kwargs)
+
 
             else:
                 # We can use the interpolators. They require the settings to come in order:
@@ -314,6 +339,21 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
        else:
            self.ps = self.base_model.score_events(d)
 
+   def _compute_single_pdf(self, **kwargs):
+        # We need to make a new model. Make its config:
+        config = combine_dicts(self.pdf_base_config, deep_copy=True)
+        config['never_save_to_cache'] = True
+
+        for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
+            config[setting_name] = self._get_setting(setting_name, log_prior, base_value, **kwargs)
+
+        model = Model(config)
+        mus = model.expected_events()
+        ps = model.score_events(self._data)
+
+        return mus, ps
+
+
    def _compute_likelihood(self, mus, pdf_values_at_events):
        return extended_loglikelihood(mus, pdf_values_at_events,
                                      outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
@@ -347,6 +387,21 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         self.n_hist = Histdd(bins=bins, axis_names=dimnames)
 
         self.n_hist.add(*self.base_model.to_analysis_dimensions(d))
+
+
+    def _compute_single_pdf(self, **kwargs):
+        # We need to make a new model. Make its config:
+        config = combine_dicts(self.pdf_base_config, deep_copy=True)
+        config['never_save_to_cache'] = True
+
+        for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
+            config[setting_name] = self._get_setting(setting_name, log_prior, base_value, **kwargs)
+
+        model = Model(config)
+        mus = model.expected_events()
+        ps = model.pmf_grids()
+
+        return mus, ps
 
     def _compute_likelihood(self, mus, pmfs):
         #Return log likelihood (binned) 
