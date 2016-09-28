@@ -23,8 +23,6 @@ def test_single_bin():
     assert lf(s0_rate_multiplier=5.4) == stats.poisson(5400).logpmf(1)
 
 
-
-
 def test_twobin_mc():
     conf = test_conf(mc=True)
     conf['analysis_space'] = [['x', [-40, 0, 40]]]
@@ -143,6 +141,11 @@ def test_multi_bin():
     assert almost_equal(lf(strlen_multiplier=1),
                         np.sum([stats.poisson(mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
+
+    assert almost_equal(lf(strlen_multiplier=2),
+                        np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin)
+                                for mu, seen_in_bin in zip(mus, seen)]))
+
     assert almost_equal(lf(strlen_multiplier=2.3),
                         np.sum([stats.poisson(2.3*mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
