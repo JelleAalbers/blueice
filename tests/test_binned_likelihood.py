@@ -99,6 +99,7 @@ def test_multi_bin_single_dim():
 
 
 def test_multi_bin():
+
     instructions_mc = [dict(n_events=24, x=0.5, y=0.5),
                        dict(n_events=56, x=1.5, y=0.5),
                        dict(n_events=6, x=0.5, y=2),
@@ -108,8 +109,13 @@ def test_multi_bin():
     class TestSource(DensityEstimatingSource):
         events_per_day = 42
 
+        def __init__(self,*args, **kwargs):
+            super().__init__(*args,**kwargs)
+            self.events_per_day *=len(self.config.get('strlen_multiplier','x'))
+            
         def get_events_for_density_estimate(self):
             return data, n_mc
+
 
     conf = test_conf()
     conf['default_source_class'] = TestSource
@@ -118,6 +124,8 @@ def test_multi_bin():
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
+    
+    lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'},base_value=1)
     lf.prepare()
 
     instructions_data = [dict(n_events=18, x=0.5, y=0.5),
@@ -132,6 +140,11 @@ def test_multi_bin():
     seen = [instructions_data[i]['n_events']
             for i in range(len(instructions_data))]
 
-    assert almost_equal(lf(),
+    assert almost_equal(lf(strlen_multiplier=1),
                         np.sum([stats.poisson(mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
+    assert almost_equal(lf(strlen_multiplier=2.3),
+                        np.sum([stats.poisson(2.3*mu).logpmf(seen_in_bin)
+                                for mu, seen_in_bin in zip(mus, seen)]))
+
+
