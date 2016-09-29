@@ -87,8 +87,12 @@ class Source(object):
         raise NotImplementedError
 
     def get_pmf_grid(self, *args):
-        """Returns pmf grid, errors on pdf grid.
-        Only needed for binned likelihoods: if you have an unbinned density estimator, you'll have to write
+        """Returns pmf_grid, n_events, bin_volumes:
+         - pmf_grid: pmf per bin in the analysis space
+         - n_events: if events were used for density estimation: number of events per bin (for DensityEstimatingSource)
+           otherwise float('inf')
+         - bin "hypervolumes" (widths in 1d, areas in 2d, ...)
+        This is used by binned likelihoods. if you have an unbinned density estimator, you'll have to write
         some integration / sampling routine!
         """
         raise NotImplementedError
