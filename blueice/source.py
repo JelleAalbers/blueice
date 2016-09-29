@@ -8,7 +8,6 @@ from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
 from .data_reading import read_files_in
-from .utils import inherit_docstring_from
 
 
 class Source(object):
@@ -101,23 +100,23 @@ class PDFNotComputedException(Exception):
     pass
 
 
-class DensityEstimatingSource(Source):
-    """A source which estimates its PDF by some events you give to it.
-    Child classes need to implement get_events_for_density_estimate, and call compute_pdf when they are ready
-    (usually at the end of their own init).
+class HistogramPdfSource(Source):
+    """A source which takes its PDF values from a multihist histogram.
     """
 
     def __init__(self, config, *args, **kwargs):
         """Prepares the PDF of this source for use.
         """
-        defaults = dict(n_events_for_pdf=1e6,
-                        pdf_sampling_multiplier=1,
+        defaults = dict(pdf_sampling_multiplier=1,
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range','_bin_volumes']
+            ['_pdf_histogram', '_pdf_errors', 'fraction_in_range', '_bin_volumes']
         self.pdf_has_been_computed = False
         Source.__init__(self, config, *args, **kwargs)
+
+    def fill_histogram(self, histogram):
+        raise NotImplementedError
 
     def compute_pdf(self):
         if not self.from_cache:
@@ -125,26 +124,8 @@ class DensityEstimatingSource(Source):
             dimnames, bins = zip(*self.config['analysis_space'])
             mh = Histdd(bins=bins, axis_names=dimnames)
 
-            # Get a generator function which will give us the events
-            get = self.get_events_for_density_estimate
-            if not inspect.isgeneratorfunction(get):
-                def get():
-                    return [self.get_events_for_density_estimate()]
-
-            n_events = 0
-            for events, n_simulated in get():
-                n_events += n_simulated
-                mh.add(*utils._events_to_analysis_dimensions(events, self.config['analysis_space']))
-
-            self.fraction_in_range = mh.n / n_events
-
-            # Convert the histogram to a density estimate
-            # This means we have to divide by
-            #  - the number of events IN RANGE received
-            #    (fraction_in_range keeps track of how many events were not in range)
-            #  - the bin sizes
-            self._pdf_histogram = mh.similar_blank_hist()
-            self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+            # Fill the histogram with either events or an evaluated pdf
+            mh = self.fill_histogram(mh)
 
             # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
             # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393
@@ -162,7 +143,7 @@ class DensityEstimatingSource(Source):
 
         self.save_to_cache()
         self.pdf_has_been_computed = True
-        super().compute_pdf()
+        Source.compute_pdf(self)
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
@@ -184,6 +165,44 @@ class DensityEstimatingSource(Source):
 
         else:
             raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
+
+
+class DensityEstimatingSource(HistogramPdfSource):
+    """A source which estimates its PDF by some events you give to it.
+    Child classes need to implement get_events_for_density_estimate, and call compute_pdf when they are ready
+    (usually at the end of their own init).
+    """
+
+    def __init__(self, config, *args, **kwargs):
+        """Prepares the PDF of this source for use.
+        """
+        defaults = dict(n_events_for_pdf=1e6)
+        config = utils.combine_dicts(defaults, config)
+        config['cache_attributes'] = config.get('cache_attributes', []) + ['events_per_day']
+        HistogramPdfSource.__init__(self, config, *args, **kwargs)
+
+    def fill_histogram(self, mh):
+            # Get a generator function which will give us the events
+            get = self.get_events_for_density_estimate
+            if not inspect.isgeneratorfunction(get):
+                def get():
+                    return [self.get_events_for_density_estimate()]
+
+            n_events = 0
+            for events, n_simulated in get():
+                n_events += n_simulated
+                mh.add(*utils._events_to_analysis_dimensions(events, self.config['analysis_space']))
+
+            self.fraction_in_range = mh.n / n_events
+
+            # Convert the histogram to a density estimate
+            # This means we have to divide by
+            #  - the number of events IN RANGE received
+            #    (fraction_in_range keeps track of how many events were not in range)
+            #  - the bin sizes
+            self._pdf_histogram = mh.similar_blank_hist()
+            self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+            return mh
 
     def get_pmf_grid(self):
         return self._pdf_histogram.histogram * self._bin_volumes, self._pdf_errors.histogram * self._bin_volumes
