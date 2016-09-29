@@ -32,11 +32,13 @@ class Source(object):
 
                         # If true, never retrieve things from the cache. Saving to cache still occurs.
                         force_recalculation=False,
+                        # If true, never save things to the cache. Loading from cache still occurs.
+                        never_save_to_cache=False,
                         cache_dir='pdf_cache',
                         )
         c = utils.combine_dicts(defaults, config)
-        c['dont_hash_settings'] += ['force_recalculation', 'dont_hash_settings', 'label', 'color',
-                                    'extra_dont_hash_settings']
+        c['dont_hash_settings'] += ['force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
+                                    'label', 'color', 'extra_dont_hash_settings']
 
         # Merge the 'extra' (per-source) dont hash settings into the normal dont_hash_settings
         c['dont_hash_settings'] += c['extra_dont_hash_settings']
@@ -77,7 +79,7 @@ class Source(object):
 
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
-        if not self.from_cache:
+        if not self.from_cache and not self.config['never_save_to_cache']:
             utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']}, self._cache_filename)
         return self._cache_filename
 

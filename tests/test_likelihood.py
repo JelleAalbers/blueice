@@ -1,12 +1,12 @@
 from blueice.test_helpers import *
-from blueice.likelihood import LogLikelihood, InvalidShapeParameter, NotPreparedException
+from blueice.likelihood import UnbinnedLogLikelihood, InvalidShapeParameter, NotPreparedException
 import pytest
 import scipy.stats as sps
 
 
 def test_likelihood_value():
     """Just a sanity check to show we get the right likelihood values"""
-    lf = LogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(test_conf())
     lf.add_rate_parameter('s0')
     lf.base_model.sources[0].events_per_day = 1
 
@@ -19,14 +19,14 @@ def test_likelihood_value():
 
 
 def test_no_shape_params():
-    lf = LogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(test_conf())
     d = lf.base_model.simulate()
     lf.prepare()
     lf.set_data(d)
     lf()
 
     # Test a MonteCarloSource, which should trigger a pdf computation
-    lf = LogLikelihood(test_conf(mc=True))
+    lf = UnbinnedLogLikelihood(test_conf(mc=True))
     d = lf.base_model.simulate()
     lf.prepare()
     lf.set_data(d)
@@ -34,7 +34,7 @@ def test_no_shape_params():
 
 
 def test_shape_params():
-    lf = LogLikelihood(test_conf(n_sources=1))
+    lf = UnbinnedLogLikelihood(test_conf(n_sources=1))
     lf.add_rate_parameter('s0')
     with pytest.raises(InvalidShapeParameter):
         lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'})
@@ -59,7 +59,7 @@ def test_shape_params():
 
 
 def test_multisource_likelihood():
-    lf = LogLikelihood(test_conf(n_sources=2))
+    lf = UnbinnedLogLikelihood(test_conf(n_sources=2))
 
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 2, 4))
     lf.add_rate_parameter('s0')
@@ -86,7 +86,7 @@ def test_multisource_likelihood():
 
 
 def test_early_call():
-    lf = LogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(test_conf())
     d = lf.base_model.simulate()
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 2))
 
@@ -109,7 +109,7 @@ def test_noninterpolated_pdf():
 
     conf = test_conf(n_sources=1)
     conf['some_multiplier']=3e-3
-    lf = LogLikelihood(conf)
+    lf = UnbinnedLogLikelihood(conf)
     lf.add_shape_parameter('mu',(0.,1.))
     lf.add_shape_parameter('sigma',(1.,2.))
     lf.prepare()

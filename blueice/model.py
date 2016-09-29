@@ -16,7 +16,7 @@ class Model(object):
         defaults = dict(livetime_days=1,
                         data_dirs=1,
                         nohash_settings=['data_dirs', 'pdf_sampling_batch_size',
-                                         'force_pdf_recalculation'])
+                                         'force_recalculation'])
         self.config = utils.combine_dicts(defaults, config, kwargs, deep_copy=True)
 
         # Initialize the sources. Each gets passed the entire config (without the 'sources' field)

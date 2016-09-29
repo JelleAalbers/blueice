@@ -4,6 +4,7 @@ from blueice.source import DensityEstimatingSource
 
 from scipy import stats
 import numpy as np
+import pytest
 
 
 def test_single_bin():
@@ -21,8 +22,6 @@ def test_single_bin():
 
     assert lf() == stats.poisson(1000).logpmf(1)
     assert lf(s0_rate_multiplier=5.4) == stats.poisson(5400).logpmf(1)
-
-
 
 
 def test_twobin_mc():
@@ -111,7 +110,8 @@ def test_multi_bin():
 
         def __init__(self,*args, **kwargs):
             super().__init__(*args,**kwargs)
-            self.events_per_day *=len(self.config.get('strlen_multiplier','x'))
+            if (self.events_per_day == 42):
+                self.events_per_day *=len(self.config.get('strlen_multiplier','x'))
             
         def get_events_for_density_estimate(self):
             return data, n_mc
@@ -143,6 +143,16 @@ def test_multi_bin():
     assert almost_equal(lf(strlen_multiplier=1),
                         np.sum([stats.poisson(mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
+
+    with pytest.raises(NotImplementedError):
+        lf(compute_pdf=True,strlen_multiplier=2), np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin) for mu, seen_in_bin in zip(mus, seen)])
+#                        
+    assert  almost_equal(lf(compute_pdf=False,strlen_multiplier=2),
+                        np.sum([stats.poisson(2 * mu).logpmf(seen_in_bin)
+                                for mu, seen_in_bin in zip(mus, seen)]))
+#
+#
+#
     assert almost_equal(lf(strlen_multiplier=2.3),
                         np.sum([stats.poisson(2.3*mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
