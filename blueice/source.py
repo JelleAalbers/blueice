@@ -8,7 +8,6 @@ from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
 from .data_reading import read_files_in
-from .utils import inherit_docstring_from
 
 
 class Source(object):
@@ -117,9 +116,7 @@ class HistogramPdfSource(Source):
         Source.__init__(self, config, *args, **kwargs)
 
     def fill_histogram(self, histogram):
-        """Fill the histogram, overwrite to make it do something"""
-        self._pdf_histogram = histogram.similar_blank_hist()
-        return histogram
+        raise NotImplementedError
 
     def compute_pdf(self):
         if not self.from_cache:
@@ -146,7 +143,7 @@ class HistogramPdfSource(Source):
 
         self.save_to_cache()
         self.pdf_has_been_computed = True
-        super().compute_pdf()
+        Source.compute_pdf(self)
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
