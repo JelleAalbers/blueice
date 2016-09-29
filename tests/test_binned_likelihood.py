@@ -1,5 +1,6 @@
 from blueice.test_helpers import *
 from blueice.likelihood import BinnedLogLikelihood
+from blueice.likelihood import beeston_barlow_root2
 from blueice.source import DensityEstimatingSource
 
 from scipy import stats
@@ -156,5 +157,49 @@ def test_multi_bin():
     assert almost_equal(lf(strlen_multiplier=2.3),
                         np.sum([stats.poisson(2.3*mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
+
+
+
+def ll(A,p=0.2,d=2,a=32):
+    return -2.*(sps.poisson(p*A+1).logpmf(a)+sps.poisson(A).logpmf(d))
+
+def test_BeestonBarlow():
+    instructions_mc = [dict(n_events=32, x=0.5)]
+    data, n_mc = make_data(instructions_mc)
+
+    class TestSource(DensityEstimatingSource):
+        events_per_day = 32./5.
+
+        def __init__(self,*args, **kwargs):
+            super().__init__(*args,**kwargs)
+            
+        def get_events_for_density_estimate(self):
+            return data, n_mc
+
+
+    conf = test_conf()
+    conf['default_source_class'] = TestSource
+    conf = test_conf(mc=True)
+
+
+    likelihood_config = {'calibration_method' : 'BeestonBarlowSingle','calibration_source' : 0}
+    lf = BinnedLogLikelihood(conf, likelihood_config=likelihood_config)
+    lf.prepare()
+
+    # Make a single event at x=0
+    lf.set_data(np.zeros(2, dtype=[('x', np.float), ('source', np.int)]))
+
+    assert almost_equal( 28.0814209,beeston_barlow_root2(np.array([32]),0.2,np.array([1]),np.array([2]) ))
+
+    A = beeston_barlow_root2(np.array([32]), 0.2, np.array([0]), np.array([2]))
+
+    A = (2+32)/(1+0.2)
+
+    assert almost_equal(lf(), stats.poisson(0.2*A).logpmf(2))
+
+
+
+
+
 
 

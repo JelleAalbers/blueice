@@ -59,6 +59,8 @@ class LogLikelihoodBase(object):
         self.anchor_models = OrderedDict()  # dictionary mapping z-score -> actual model
         self.mu_interpolator = None     # function mapping z scores -> rates for each source
         self.ps_interpolator = None     # function mapping z scores -> (source, event) p-values
+        self.n_model_events_interpolator = lambda x : None     # function mapping to interpolate # of source MC/calibration
+        self.n_model_events = 0.
 
     def prepare(self, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
@@ -110,6 +112,7 @@ class LogLikelihoodBase(object):
 
 
         self._data = d
+        self.n_model_events = None
         self._prepare_data(d)
 
         self.is_data_set = True
@@ -193,7 +196,7 @@ class LogLikelihoodBase(object):
                 if self._has_non_numeric:
                     raise NotImplementedError("compute_pdf only works for numerical values")
 
-                mus, ps = self._compute_single_pdf(**kwargs)
+                mus, ps, n_model_events = self._compute_single_pdf(**kwargs)
 
 
             else:
@@ -216,11 +219,13 @@ class LogLikelihoodBase(object):
 
                 mus = self.mus_interpolator(zs)
                 ps = self.ps_interpolator(zs)
+                n_model_events = self.n_model_events_interpolator(zs)
 
         else:
             # No shape parameters
             mus = self.base_model.expected_events()
             ps = self.ps
+            n_model_events = self.n_model_events
 
         # Apply the rate multipliers
         for source_i, source_name in enumerate(self.source_name_list):
@@ -234,6 +239,12 @@ class LogLikelihoodBase(object):
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
 
+
+        # Perform fits to background calibration data if needed: 
+        # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
+
+        mus,ps = self._analytical_pmf_adjustment(mus,ps,n_model_events)
+
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus >= 0) & (mus < float('inf'))):
             if self.config.get('unphysical_behaviour') == 'error':
@@ -244,6 +255,10 @@ class LogLikelihoodBase(object):
         # Get the loglikelihood. At last!
         result += self._compute_likelihood(mus, ps)
         return result
+
+    def _analytical_pmf_adjustment(self,mus,ps,n_model_events):
+        #By default, no calibration is performed
+        return mus,ps
 
     def _kwargs_to_settings(self, **kwargs):
         """Return shape parameters, rate_multipliers from kwargs.
@@ -351,7 +366,7 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
         mus = model.expected_events()
         ps = model.score_events(self._data)
 
-        return mus, ps
+        return mus, ps,None
 
 
    def _compute_likelihood(self, mus, pdf_values_at_events):
@@ -368,17 +383,31 @@ class LogLikelihood(UnbinnedLogLikelihood):
 
 class BinnedLogLikelihood(LogLikelihoodBase):
     def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
-        pdf_base_config['pdf_interpolation_method'] = 'piecewise'
         LogLikelihoodBase.__init__(self, pdf_base_config, likelihood_config, **kwargs)
+        pdf_base_config['pdf_interpolation_method'] = 'piecewise'
+        
+        self.calibration_method = self.config.get('calibration_method')
+        self.calibration_source = self.config.get('calibration_source')
+        if bool(self.calibration_method is None) != bool(self.calibration_source is None):
+            raise LookupError("calibration_method and calibration_source must both be set")
 
     def _prepare_for_data(self):
-        self.ps = self.base_model.pmf_grids()
+        self.ps, self.n_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
-            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids(),
+            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
                                                                   extra_dims=[len(self.source_name_list)] +
                                                                              list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
+
+
+            if self.calibration_method is not None:
+                self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
+                                                                    extra_dims=[len(self.source_name_list)] +
+                                                                               list(self.ps.shape),
+                                                                    anchor_models=self.anchor_models)
+
+
 
     def _prepare_data(self, d):
         """Called in set_data, specific to type of likelihood"""
@@ -399,9 +428,55 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
         model = Model(config)
         mus = model.expected_events()
-        ps = model.pmf_grids()
+        ps, n_model_events = model.pmf_grids()
 
-        return mus, ps
+        return mus, ps, n_model_events
+
+    def _analytical_pmf_adjustment(self,mus,pmfs,n_model_events):
+        """
+            Some nuisance parameters may be minimized here before the likelihood call
+
+            For the Beeston-Barlow method, a calibration or MC data set together with the "signal data" 
+            can be minimized analytically to yield maximum likelihood estimates for the bin expectation value from 
+            that source. 
+        """
+        if self.calibration_method == 'BeestonBarlowSingle':
+            self.calibration_source
+            p_bins = pmfs.copy()
+
+            for i,(mu, p_bin_source) in enumerate(zip(mus, p_bins)):
+                if i != self.calibration_source:
+                    p_bin_source *= mu
+                else:
+                    p_bin_source *= 0.
+            
+            u_bins = np.sum(p_bins, axis=0)
+
+
+            p_calibration = mus[self.calibration_source]/n_model_events[self.calibration_source].n
+
+
+            a_bins = n_model_events[self.calibration_source].histogram
+
+            
+            A_bins_1, A_bins_2 = beeston_barlow_roots(a_bins,p_calibration,u_bins,self.n_hist.histogram)
+            assert np.all(A_bins_1<=0.) #it seems(?) the 1st root is always negative
+            
+            mask = u_bins<=0.
+            A_bins_2[mask] = (self.n_hist.histogram[mask]+a_bins[mask])/(1. + p_calibration)
+            print(u_bins,A_bins_2)
+
+            
+            assert np.all(0.<=A_bins_2) 
+
+
+
+            #mus[self.calibration_source]=
+
+            pmfs[self.calibration_source] = A_bins_2/A_bins_2.sum()
+
+        return mus,pmfs
+
 
     def _compute_likelihood(self, mus, pmfs):
         #Return log likelihood (binned) 
@@ -439,3 +514,15 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
         # Replace all likelihoods which are not positive numbers (i.e. 0, negative, or nan) with outlier_likelihood
         p_events[True ^ (p_events > 0)] = outlier_likelihood
     return -mu.sum() + np.sum(np.log(p_events))
+
+def beeston_barlow_root1(a,p,U,d):
+    return  ((-U*p - U + a*p + d*p - 
+    np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p
+    - 2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
+
+def beeston_barlow_root2(a,p,U,d):  
+    return ((-U*p - U + a*p + d*p + np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p
+    - 2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
+
+def beeston_barlow_roots(a,p,U,d):
+    return beeston_barlow_root1(a,p,U,d), beeston_barlow_root2(a,p,U,d)
