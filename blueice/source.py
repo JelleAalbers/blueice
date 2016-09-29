@@ -91,7 +91,6 @@ class Source(object):
          - pmf_grid: pmf per bin in the analysis space
          - n_events: if events were used for density estimation: number of events per bin (for DensityEstimatingSource)
            otherwise float('inf')
-         - bin "hypervolumes" (widths in 1d, areas in 2d, ...)
         This is used by binned likelihoods. if you have an unbinned density estimator, you'll have to write
         some integration / sampling routine!
         """
@@ -119,7 +118,7 @@ class DensityEstimatingSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_pdf_errors', 'events_per_day', 'fraction_in_range','_bin_volumes']
+            ['_pdf_histogram', '_n_events_histogram', 'events_per_day', 'fraction_in_range','_bin_volumes']
         self.pdf_has_been_computed = False
         Source.__init__(self, config, *args, **kwargs)
 
@@ -147,6 +146,7 @@ class DensityEstimatingSource(Source):
             #  - the number of events IN RANGE received
             #    (fraction_in_range keeps track of how many events were not in range)
             #  - the bin sizes
+            self._n_events_histogram = mh
             self._pdf_histogram = mh.similar_blank_hist()
             self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
 
@@ -187,10 +187,10 @@ class DensityEstimatingSource(Source):
             return self._pdf_histogram.lookup(*args)
 
         else:
-            raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
+            raise NotImplementedError("PDF Interpolation method %s not implemented" % method)
 
     def get_pmf_grid(self):
-        return self._pdf_histogram.histogram * self._bin_volumes, self._pdf_errors.histogram * self._bin_volumes
+        return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
 
     def get_events_for_density_estimate(self):
         """Return, or yield in batches, (events for use in density estimation, events simulated/read)
