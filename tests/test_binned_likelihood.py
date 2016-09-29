@@ -178,21 +178,22 @@ def test_BeestonBarlow():
 
 
     conf = test_conf()
+    conf['analysis_space'] = [['x', [0, 1]]]
     conf['default_source_class'] = TestSource
-    conf = test_conf(mc=True)
 
-
-    likelihood_config = {'calibration_method' : 'BeestonBarlowSingle','calibration_source' : 0}
+    likelihood_config = {'model_statistical_uncertainty_handling': 'bb_single',
+                         'bb_single_source': 0}
     lf = BinnedLogLikelihood(conf, likelihood_config=likelihood_config)
     lf.prepare()
+    assert lf.n_model_events is not None
 
     # Make a single event at x=0
     lf.set_data(np.zeros(2, dtype=[('x', np.float), ('source', np.int)]))
 
-    assert almost_equal( 28.0814209,beeston_barlow_root2(np.array([32]),0.2,np.array([1]),np.array([2]) ))
+    assert lf.n_model_events is not None
+    assert almost_equal(28.0814209, beeston_barlow_root2(np.array([32]), 0.2, np.array([1]), np.array([2])))
 
-    A = beeston_barlow_root2(np.array([32]), 0.2, np.array([0]), np.array([2]))
-
+    # A = beeston_barlow_root2(np.array([32]), 0.2, np.array([0]), np.array([2]))
     A = (2+32)/(1+0.2)
 
     assert almost_equal(lf(), stats.poisson(0.2*A).logpmf(2))
