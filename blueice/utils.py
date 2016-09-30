@@ -76,6 +76,8 @@ def hashablize(obj):
     except TypeError:
         if isinstance(obj, dict):
             return tuple((k, hashablize(v)) for (k, v) in sorted(obj.items()))
+        elif isinstance(obj, np.ndarray):
+            return tuple(obj.tolist())
         elif hasattr(obj, '__iter__'):
             return tuple(hashablize(o) for o in obj)
         else:
