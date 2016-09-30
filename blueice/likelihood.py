@@ -162,7 +162,7 @@ class LogLikelihoodBase(object):
         else:
             raise ValueError("Non-existing parameter %s" % parameter_name)
 
-    def __call__(self, livetime_days=None, compute_pdf=False, full_output=True, **kwargs):
+    def __call__(self, livetime_days=None, compute_pdf=False, full_output=False, **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
         For values not passed, their base values will be assumed.
         For rate uncertainties, pass sourcename_rate_multiplier.
