@@ -7,6 +7,8 @@ from scipy.optimize import minimize, brentq
 from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from iminuit.util import make_func_code
+from iminuit import Minuit
 
 
 class NoOpimizationNecessary(Exception):
@@ -137,6 +139,44 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
         else:
             results[name] = optimum[i]
     return results,  -optresult.fun
+
+
+def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
+    """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
+    Returns {param: best fit}, maximum loglikelihood.
+
+    Optimization is performed with iminuits Minuit
+    :param minimize_kwargs: dictionary with optimz to minimize
+
+    Other kwargs are passed to make_objective.
+    """
+    if minimize_kwargs is None:
+        minimize_kwargs = {}
+
+    try:
+        f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+    except NoOpimizationNecessary:
+        return {}, lf(**kwargs)
+
+    class MinuitWrap:
+        """Wrapper for functions to be called by Minuit"""
+        def __init__(self, f, s_args):
+            self.func = f
+            self.s_args = s_args
+            self.func_code = make_func_code(s_args)
+
+        def __call__(self, *args):
+            return self.func(args)
+
+    # Make a dict for minuit
+    minuit_dict = {}
+    for i, name in enumerate(names):
+        minuit_dict[name] = guess[i]
+
+    m = Minuit(MinuitWrap(f, names), **minuit_dict)
+    m.migrad()
+
+    return m.values, -1*m.fval
 
 
 def one_parameter_interval(lf, target, bound,
