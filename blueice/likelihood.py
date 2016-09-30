@@ -162,11 +162,12 @@ class LogLikelihoodBase(object):
         else:
             raise ValueError("Non-existing parameter %s" % parameter_name)
 
-    def __call__(self, livetime_days=None, compute_pdf=False , **kwargs):
+    def __call__(self, livetime_days=None, compute_pdf=False, full_output=True, **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
         For values not passed, their base values will be assumed.
         For rate uncertainties, pass sourcename_rate_multiplier.
         :param lifetime_days: lifetime in days to use, will affect rates of all sources.
+        :param full_output: instead of returning just the loglikelihood, return also the adjusted mus and ps as well.
         :param compute_pdf: compute new PDFs instead of interpolating the PDF at the requested parameters.
         """
         if not self.is_data_set:
@@ -235,7 +236,12 @@ class LogLikelihoodBase(object):
 
         # Get the loglikelihood. At last!
         result += self._compute_likelihood(mus, ps)
-        return result
+
+        if full_output:
+            return result, mus, ps
+        else:
+            return result
+
 
     def _analytical_pmf_adjustment(self, mus, ps, n_model_events):
         """Adjust PMF for finite model statistics.
