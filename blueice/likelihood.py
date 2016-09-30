@@ -373,14 +373,14 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
                                                                   extra_dims=[len(self.source_name_list)] +
-                                                                             list(self.ps.shape),
+                                                                              list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
 
 
             if self.model_statistical_uncertainty_handling is not None:
                 self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
                                                                     extra_dims=[len(self.source_name_list)] +
-                                                                               list(self.ps.shape),
+                                                                                list(self.ps.shape),
                                                                     anchor_models=self.anchor_models)
 
     def _prepare_data(self, d):

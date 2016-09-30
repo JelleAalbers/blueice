@@ -158,6 +158,9 @@ class HistogramPdfSource(Source):
         else:
             raise NotImplementedError("PDF Interpolation method %s not implemented" % method)
 
+    def get_pmf_grid(self):
+        return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
+
 
 class DensityEstimatingSource(HistogramPdfSource):
     """A source which estimates its PDF by some events you give to it.
@@ -207,9 +210,6 @@ class DensityEstimatingSource(HistogramPdfSource):
         self._n_events_histogram = mh
 
         return mh
-
-    def get_pmf_grid(self):
-        return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
 
     def get_events_for_density_estimate(self):
         """Return, or yield in batches, (events for use in density estimation, events simulated/read)
