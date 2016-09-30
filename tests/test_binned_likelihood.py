@@ -160,47 +160,4 @@ def test_multi_bin():
 
 
 
-def ll(A,p=0.2,d=2,a=32):
-    return -2.*(sps.poisson(p*A+1).logpmf(a)+sps.poisson(A).logpmf(d))
-
-def test_BeestonBarlow():
-    instructions_mc = [dict(n_events=32, x=0.5)]
-    data, n_mc = make_data(instructions_mc)
-
-    class TestSource(DensityEstimatingSource):
-        events_per_day = 32./5.
-
-        def __init__(self,*args, **kwargs):
-            super().__init__(*args,**kwargs)
-            
-        def get_events_for_density_estimate(self):
-            return data, n_mc
-
-
-    conf = test_conf()
-    conf['analysis_space'] = [['x', [0, 1]]]
-    conf['default_source_class'] = TestSource
-
-    likelihood_config = {'model_statistical_uncertainty_handling': 'bb_single',
-                         'bb_single_source': 0}
-    lf = BinnedLogLikelihood(conf, likelihood_config=likelihood_config)
-    lf.prepare()
-    assert lf.n_model_events is not None
-
-    # Make a single event at x=0
-    lf.set_data(np.zeros(2, dtype=[('x', np.float), ('source', np.int)]))
-
-    assert lf.n_model_events is not None
-    assert almost_equal(28.0814209, beeston_barlow_root2(np.array([32]), 0.2, np.array([1]), np.array([2])))
-
-    # A = beeston_barlow_root2(np.array([32]), 0.2, np.array([0]), np.array([2]))
-    A = (2+32)/(1+0.2)
-
-    assert almost_equal(lf(), stats.poisson(0.2*A).logpmf(2))
-
-
-
-
-
-
 
