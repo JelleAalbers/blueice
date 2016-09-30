@@ -158,8 +158,21 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     except NoOpimizationNecessary:
         return {}, lf(**kwargs)
 
+    # The full iminuit API is documented here:
+    # http://iminuit.readthedocs.io/en/latest/api.html
+
+    # Make a dict for minuit with a key for each parameter and the initial guesses as values
+    # TODO add also errors, limits and fixed parameters to this dictionary
+    minuit_dict = {}
+    for i, name in enumerate(names):
+        minuit_dict[name] = guess[i]
+
     class MinuitWrap:
-        """Wrapper for functions to be called by Minuit"""
+        """Wrapper for functions to be called by Minuit
+
+        s_args must be a list of argument names of function f
+        the names in this list must be the same as the keys of
+        the dictionary passed to the Minuit call."""
         def __init__(self, f, s_args):
             self.func = f
             self.s_args = s_args
@@ -168,15 +181,15 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
         def __call__(self, *args):
             return self.func(args)
 
-    # Make a dict for minuit
-    minuit_dict = {}
-    for i, name in enumerate(names):
-        minuit_dict[name] = guess[i]
-
+    # Make the Minuit object
     m = Minuit(MinuitWrap(f, names), **minuit_dict)
+
+    # Call migrad to do the actual minimization
     m.migrad()
 
-    return m.values, -1*m.fval
+    # TODO return more information, such as m.errors
+
+    return m.values, -1*m.fval  # , m.errors
 
 
 def one_parameter_interval(lf, target, bound,
