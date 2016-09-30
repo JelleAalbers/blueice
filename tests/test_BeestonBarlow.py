@@ -107,12 +107,7 @@ def test_BeestonBarlowMultiBin():
     data, _ = make_data(instructions_mc)
     lf.set_data(data)
 
-    print(data)
-
     assert lf.n_model_events is not None
-
-
-
 
     A_minimized = np.array([15.833,29.166,28.333,28.333])
     A_BB = beeston_barlow_root2(np.array([16,30,32,27]), 0.2, np.array([0.]), np.array([3,5,2,7]))
@@ -141,8 +136,6 @@ def test_BeestonBarlow_second_source():
     #in sum, 105 calibration/mc evts. 
 
     class TestSource(DensityEstimatingSource):
-        
-
 
         def __init__(self,*args, **kwargs):
             super().__init__(*args,**kwargs)
@@ -162,13 +155,11 @@ def test_BeestonBarlow_second_source():
     conf['sources']=[{'name': 's0','events_per_day':105/5.,'data': data_calibration},
                      {'name': 's1','events_per_day':16.   ,"data": data_other}]
 
-
-
     likelihood_config = {'model_statistical_uncertainty_handling': 'bb_single',
                          'bb_single_source': 0}
     lf = BinnedLogLikelihood(conf, likelihood_config=likelihood_config)
 
-    lf.add_shape_parameter('dummy',(0,1))
+    lf.add_shape_parameter('dummy', (0, 1))
     lf.prepare()
     assert lf.n_model_events is not None
 
@@ -179,8 +170,6 @@ def test_BeestonBarlow_second_source():
                        dict(n_events=7, x=3.5),]
     data, _ = make_data(instructions_mc)
     lf.set_data(data)
-
-    print(data)
 
     assert lf.n_model_events is not None
 
@@ -196,8 +185,7 @@ def test_BeestonBarlow_second_source():
 
     U_bin = np.array([5,7,1,3])
 
-    print("A_BB*0.2")
-    print(A_BB*0.2)
+    print("A_BB*0.2: %s" % str(A_BB*0.2))
 
 
     assert almost_equal(lf(), np.sum(stats.poisson(0.2*A_BB+U_bin).logpmf(dbin)))

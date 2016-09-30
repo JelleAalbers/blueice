@@ -222,7 +222,6 @@ class LogLikelihoodBase(object):
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
 
-
         # Perform fits to background calibration data if needed: 
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
         mus, ps = self._analytical_pmf_adjustment(mus, ps, n_model_events)
@@ -373,16 +372,15 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         self.ps, self.n_model_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
+            # print("Extra dims: %s" % ([len(self.source_name_list)] +  list(self.ps.shape)))
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
-                                                                  extra_dims=[len(self.source_name_list)] +
-                                                                              list(self.ps.shape),
+                                                                  extra_dims=list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
 
 
             if self.model_statistical_uncertainty_handling is not None:
                 self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
-                                                                    extra_dims=[len(self.source_name_list)] +
-                                                                                list(self.ps.shape),
+                                                                    extra_dims=list(self.ps.shape),
                                                                     anchor_models=self.anchor_models)
 
     def _prepare_data(self, d):
@@ -412,6 +410,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             print("Start of BB-single")
             print("mus: %s" % mus)
             print("pmfs: %s" % pmfs)
+            print("sum of pmfs: %s" % pmfs.sum(axis=1))
             print("n_model_events: %s" % n_model_events)
 
             source_i = self.config.get('bb_single_source')
