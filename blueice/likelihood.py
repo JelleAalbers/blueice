@@ -411,7 +411,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         if self.model_statistical_uncertainty_handling == 'bb_single':
             source_i = self.config.get('bb_single_source')
             if source_i is None:
-                raise ValueError("For the Beeson-Barlow single-source method you need to ")
+                raise ValueError("For the Beeson-Barlow single-source method you need to  specify a source")
             source_i = self.base_model.get_source_i(source_i)
 
             assert pmfs.shape == n_model_events.shape
