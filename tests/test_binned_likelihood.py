@@ -1,5 +1,6 @@
 from blueice.test_helpers import *
 from blueice.likelihood import BinnedLogLikelihood
+from blueice.likelihood import beeston_barlow_root2
 from blueice.source import DensityEstimatingSource
 
 from scipy import stats
@@ -156,5 +157,7 @@ def test_multi_bin():
     assert almost_equal(lf(strlen_multiplier=2.3),
                         np.sum([stats.poisson(2.3*mu).logpmf(seen_in_bin)
                                 for mu, seen_in_bin in zip(mus, seen)]))
+
+
 
 

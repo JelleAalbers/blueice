@@ -86,8 +86,11 @@ class Source(object):
         raise NotImplementedError
 
     def get_pmf_grid(self, *args):
-        """Returns pmf grid, errors on pdf grid.
-        Only needed for binned likelihoods: if you have an unbinned density estimator, you'll have to write
+        """Returns pmf_grid, n_events, bin_volumes:
+         - pmf_grid: pmf per bin in the analysis space
+         - n_events: if events were used for density estimation: number of events per bin (for DensityEstimatingSource)
+           otherwise float('inf')
+        This is used by binned likelihoods. if you have an unbinned density estimator, you'll have to write
         some integration / sampling routine!
         """
         raise NotImplementedError
@@ -111,30 +114,19 @@ class HistogramPdfSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_pdf_errors', 'fraction_in_range', '_bin_volumes']
+            ['_pdf_histogram', '_n_events_histogram', 'fraction_in_range', '_bin_volumes']
         self.pdf_has_been_computed = False
         Source.__init__(self, config, *args, **kwargs)
 
-    def fill_histogram(self, histogram):
+    def build_histogram(self):
+        """Set the _pdf_histogram (Histdd), _n_events_histogram (Histdd) and _bin_volumes (numpy array) attributes
+        """
         raise NotImplementedError
 
     def compute_pdf(self):
         if not self.from_cache:
-            # Get the events to estimate the PDF
-            dimnames, bins = zip(*self.config['analysis_space'])
-            mh = Histdd(bins=bins, axis_names=dimnames)
-
             # Fill the histogram with either events or an evaluated pdf
-            mh = self.fill_histogram(mh)
-
-            # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
-            # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393
-            self._bin_volumes = reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
-            self._pdf_histogram.histogram /= self._bin_volumes
-
-            # Estimate the MC statistical error. Not used for anything, but good to inspect.
-            self._pdf_errors = self._pdf_histogram / np.sqrt(np.clip(mh.histogram, 1, float('inf')))
-            self._pdf_errors[self._pdf_errors == 0] = float('nan')
+            self.build_histogram()
 
         # Construct a linear interpolator between the histogram bins
         if self.config['pdf_interpolation_method'] == 'linear':
@@ -164,7 +156,10 @@ class HistogramPdfSource(Source):
             return self._pdf_histogram.lookup(*args)
 
         else:
-            raise NotImplementedError("PDF Interpolation method %s not implemented" % self.pdf_interpolation_method)
+            raise NotImplementedError("PDF Interpolation method %s not implemented" % method)
+
+    def get_pmf_grid(self):
+        return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
 
 
 class DensityEstimatingSource(HistogramPdfSource):
@@ -181,31 +176,40 @@ class DensityEstimatingSource(HistogramPdfSource):
         config['cache_attributes'] = config.get('cache_attributes', []) + ['events_per_day']
         HistogramPdfSource.__init__(self, config, *args, **kwargs)
 
-    def fill_histogram(self, mh):
-            # Get a generator function which will give us the events
-            get = self.get_events_for_density_estimate
-            if not inspect.isgeneratorfunction(get):
-                def get():
-                    return [self.get_events_for_density_estimate()]
+    def build_histogram(self):
+        # Get the events to estimate the PDF
+        dimnames, bins = zip(*self.config['analysis_space'])
+        mh = Histdd(bins=bins, axis_names=dimnames)
 
-            n_events = 0
-            for events, n_simulated in get():
-                n_events += n_simulated
-                mh.add(*utils._events_to_analysis_dimensions(events, self.config['analysis_space']))
+        # Get a generator function which will give us the events
+        get = self.get_events_for_density_estimate
+        if not inspect.isgeneratorfunction(get):
+            def get():
+                return [self.get_events_for_density_estimate()]
 
-            self.fraction_in_range = mh.n / n_events
+        n_events = 0
+        for events, n_simulated in get():
+            n_events += n_simulated
+            mh.add(*utils._events_to_analysis_dimensions(events, self.config['analysis_space']))
 
-            # Convert the histogram to a density estimate
-            # This means we have to divide by
-            #  - the number of events IN RANGE received
-            #    (fraction_in_range keeps track of how many events were not in range)
-            #  - the bin sizes
-            self._pdf_histogram = mh.similar_blank_hist()
-            self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
-            return mh
+        self.fraction_in_range = mh.n / n_events
 
-    def get_pmf_grid(self):
-        return self._pdf_histogram.histogram * self._bin_volumes, self._pdf_errors.histogram * self._bin_volumes
+        # Convert the histogram to a density estimate
+        # This means we have to divide by
+        #  - the number of events IN RANGE received
+        #    (fraction_in_range keeps track of how many events were not in range)
+        #  - the bin sizes
+        self._pdf_histogram = mh.similar_blank_hist()
+        self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+
+        # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
+        # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393
+        self._bin_volumes = reduce(np.multiply, np.ix_(*[np.diff(bs) for bs in bins]))
+        self._pdf_histogram.histogram /= self._bin_volumes
+
+        self._n_events_histogram = mh
+
+        return mh
 
     def get_events_for_density_estimate(self):
         """Return, or yield in batches, (events for use in density estimation, events simulated/read)
