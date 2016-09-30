@@ -372,7 +372,6 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         self.ps, self.n_model_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
-            # print("Extra dims: %s" % ([len(self.source_name_list)] +  list(self.ps.shape)))
             self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
                                                                   extra_dims=list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
@@ -407,11 +406,6 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             that source. 
         """
         if self.model_statistical_uncertainty_handling == 'bb_single':
-            print("Start of BB-single")
-            print("mus: %s" % mus)
-            print("pmfs: %s" % pmfs)
-            print("sum of pmfs: %s" % pmfs.sum(axis=1))
-            print("n_model_events: %s" % n_model_events)
 
             source_i = self.config.get('bb_single_source')
             if source_i is None:
@@ -455,8 +449,6 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
         observed_counts = self.data_events_per_bin.histogram
 
-        print("Expected total %s, counts per bin %s" % (expected_total, expected_counts))
-        print("Observed total %s, counts per bin %s" % (observed_counts.sum(), observed_counts))
 
         ret = observed_counts * np.log(expected_total) - expected_total - loggamma(observed_counts + 1.).real
         return np.sum(ret)
