@@ -409,6 +409,11 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             that source. 
         """
         if self.model_statistical_uncertainty_handling == 'bb_single':
+            print("Start of BB-single")
+            print("mus: %s" % mus)
+            print("pmfs: %s" % pmfs)
+            print("n_model_events: %s" % n_model_events)
+
             source_i = self.config.get('bb_single_source')
             if source_i is None:
                 raise ValueError("For the Beeson-Barlow single-source method you need to ")
@@ -435,12 +440,10 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             # For U=0, the solution above is singular; we need to use a special case instead
             A_bins_special = (self.data_events_per_bin.histogram + a_bins) / (1. + p_calibration)
             A_bins = np.choose(u_bins == 0, [A_bins_2, A_bins_special])
-            print(u_bins == 0, A_bins_2, A_bins_special)
 
             assert np.all(0 <= A_bins)
             pmfs[source_i] = A_bins / A_bins.sum()
             mus[source_i] = A_bins.sum() * p_calibration
-            print(pmfs, mus)
 
         return mus, pmfs
 
@@ -455,7 +458,6 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
         print("Expected total %s, counts per bin %s" % (expected_total, expected_counts))
         print("Observed total %s, counts per bin %s" % (observed_counts.sum(), observed_counts))
-
 
         ret = observed_counts * np.log(expected_total) - expected_total - loggamma(observed_counts + 1.).real
         return np.sum(ret)
