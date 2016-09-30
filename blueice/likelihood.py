@@ -37,7 +37,6 @@ class LogLikelihoodBase(object):
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-
         self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
         self.source_name_list = [s.name for s in self.base_model.sources]
 
@@ -305,6 +304,15 @@ class LogLikelihoodBase(object):
                                  anchors=mu + np.array(anchor_zs) * std,
                                  log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
 
+    def _compute_single_model(self, **kwargs):
+        """Return a model formed using the base config, using kwargs as overrides"""
+        # We need to make a new model. Make its config:
+        _, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
+        config = combine_dicts(self.pdf_base_config, shape_parameter_settings, deep_copy=True)
+
+        config['never_save_to_cache'] = True
+        return Model(config, **shape_parameter_settings)
+
     ##
     # Methods to override
     ##
@@ -337,15 +345,9 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
            self.ps = self.base_model.score_events(d)
 
    def _compute_single_pdf(self, **kwargs):
-        # We need to make a new model. Make its config:
-        _, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
-        config = combine_dicts(self.pdf_base_config, shape_parameter_settings, deep_copy=True)
-        config['never_save_to_cache'] = True
-        model = Model(config, **shape_parameter_settings)
-
+        model = self._compute_single_model(**kwargs)
         mus = model.expected_events()
         ps = model.score_events(self._data)
-
         return mus, ps, None
 
    def _compute_likelihood(self, mus, pdf_values_at_events):
@@ -392,14 +394,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         self.data_events_per_bin.add(*self.base_model.to_analysis_dimensions(d))
 
     def _compute_single_pdf(self, **kwargs):
-        # We need to make a new model. Make its config:
-        config = combine_dicts(self.pdf_base_config, deep_copy=True)
-        config['never_save_to_cache'] = True
-
-        for setting_name, (_, log_prior, base_value) in self.shape_parameters.items():
-            config[setting_name] = self._get_setting(setting_name, log_prior, base_value, **kwargs)
-
-        model = Model(config)
+        model = self._compute_single_model(**kwargs)
         mus = model.expected_events()
         ps, n_model_events = model.pmf_grids()
 
