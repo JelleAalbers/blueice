@@ -241,7 +241,9 @@ def one_parameter_interval(lf, target, bound,
         return brentq(t, global_best, bound, args=[confidence_level])
 
 
-def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
+def plot_likelihood_ratio(lf, *space, vmax=15,
+                          bestfit_routine=bestfit_scipy,
+                          plot_kwargs=None, **kwargs):
     """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
@@ -259,7 +261,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
         for q in x:
             lf_kwargs = {dim: q}
             lf_kwargs.update(kwargs)
-            results.append(bestfit_scipy(lf, **lf_kwargs)[1])
+            results.append(bestfit_routine(lf, **lf_kwargs)[1])
         results = np.array(results)
         results = results.max() - results
         plt.plot(x, results, **plot_kwargs)
@@ -276,7 +278,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
             for z2 in y:
                 lf_kwargs = {dims[0]: z1, dims[1]: z2}
                 lf_kwargs.update(kwargs)
-                results[-1].append(bestfit_scipy(lf, **lf_kwargs)[1])
+                results[-1].append(bestfit_routine(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
         results = results.max() - results
