@@ -2,13 +2,25 @@
 If you want to analyze with your own tools, you can just ignore these,
 only make_objective is of general use (for wrapping optimizers).
 """
+import warnings
+
 import numpy as np
 from scipy.optimize import minimize, brentq
 from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from iminuit.util import make_func_code
-from iminuit import Minuit
+
+
+try:
+    # Import imunuit here, so blueice works also for people who don't have it installed.
+    from iminuit.util import make_func_code     # noqa
+    from iminuit import Minuit                  # noqa
+    DEFAULT_BESTFIT_ROUTINE = 'minuit'
+except ImportError:
+    warnings.warn("You don't have iminuit installed; switching to scipy minimizers."
+                  "We've had several issues with these on degenerate problems, you're advised to do "
+                  "conda install -c astropy iminuit")
+    DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
 
 class NoOpimizationNecessary(Exception):
@@ -153,6 +165,10 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     if minimize_kwargs is None:
         minimize_kwargs = {}
 
+    # By default, use quiet evaluation, since this is called iteratively in profile likelihoods.
+    minimize_kwargs.setdefault('print_level', 0)
+    minimize_kwargs.setdefault('pedantic', False)
+
     try:
         f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
     except NoOpimizationNecessary:
@@ -163,7 +179,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
 
     # Make a dict for minuit with a key for each parameter and the initial guesses as values
     # TODO add also errors, limits and fixed parameters to this dictionary
-    minuit_dict = {}
+    minuit_dict = minimize_kwargs
     for i, name in enumerate(names):
         minuit_dict[name] = guess[i]
 
@@ -192,15 +208,24 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     return m.values, -1*m.fval  # , m.errors
 
 
+def _get_bestfit_routine(key):
+    if hasattr(key, '__call__'):
+        return key
+    if key is None:
+        key = DEFAULT_BESTFIT_ROUTINE
+    return BESTFIT_ROUTINES[key]
+
+
 def one_parameter_interval(lf, target, bound,
                            confidence_level=0.9, kind='upper',
-                           bestfit_routine=bestfit_scipy, **kwargs):
+                           bestfit_routine=None, **kwargs):
     """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
     This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
     target: parameter of lf to constrain
     bound: bound(s) for the line search. For upper and lower: single value, for central: 2-tuple.
     kwargs: dictionary with arguments to bestfit
     """
+    bestfit_routine = _get_bestfit_routine(bestfit_routine)
     if target is None:
         target = lf.source_list[-1] + '_rate_multiplier'
 
@@ -242,7 +267,7 @@ def one_parameter_interval(lf, target, bound,
 
 
 def plot_likelihood_ratio(lf, *space, vmax=15,
-                          bestfit_routine=bestfit_scipy,
+                          bestfit_routine=None,
                           plot_kwargs=None, **kwargs):
     """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
@@ -252,8 +277,10 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
     Further arguments are passed to lf, arguments not passed are fitted at each point.
     :return: Nothing
     """
+    bestfit_routine = _get_bestfit_routine(bestfit_routine)
     if plot_kwargs is None:
         plot_kwargs = {}
+
     results = []
     label = "Log likelihood ratio"
     if len(space) == 1:
@@ -288,3 +315,6 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
         plt.ylabel(dims[1])
     else:
         raise ValueError("Can't handle %d dimensions" % len(space))
+
+
+BESTFIT_ROUTINES = dict(scipy=bestfit_scipy, minuit=bestfit_minuit)
