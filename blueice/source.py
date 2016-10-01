@@ -1,3 +1,17 @@
+"""Built-in Source baseclasses. In order of increasing functionality and decreasing generality:
+
+ * Source: only sets up default arguments and helper functions for caching.
+   Use e.g. if you have an analytic pdf
+
+ * HistogramPdfSource:  + fetch/interpolate the PDF/PMF from a (multihist) histogram
+   Use e.g. if you have a numerically computable pdf (e.g. using convolution of some known functions)
+
+ * DensityEstimatingSource: + create that histogram by binning some sample of events
+   Use e.g. if you want to estimate density from a calibration data sample.
+
+ * MonteCarloSource: + get that sample from the source's own simulate method.
+   Use if you have a Monte Carlo to generate events. This was the original 'niche' for which blueice was created.
+"""
 from functools import reduce
 import os
 import inspect
@@ -8,6 +22,9 @@ from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
 from .data_reading import read_files_in
+
+__all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarloSource',
+           'PDFNotComputedException']
 
 
 class Source(object):
@@ -97,10 +114,6 @@ class Source(object):
 
     def simulate(self, n_events):
         raise NotImplementedError
-
-
-class PDFNotComputedException(Exception):
-    pass
 
 
 class HistogramPdfSource(Source):
@@ -241,3 +254,7 @@ class MonteCarloSource(DensityEstimatingSource):
         for _ in range(int(n_events // batch_size)):
             result = self.simulate(n_events=batch_size)
             yield result, batch_size
+
+
+class PDFNotComputedException(Exception):
+    pass

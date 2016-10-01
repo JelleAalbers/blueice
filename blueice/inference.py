@@ -1,6 +1,9 @@
-"""Helper functions for analysis of LogLikelihood functions
-If you want to analyze with your own tools, you can just ignore these,
-only make_objective is of general use (for wrapping optimizers).
+"""Helper functions for analysis using LogLikelihood functions
+
+Blueice's main purpose in life is to provide you with a likelihood function, but some operations
+are so common we could not resist adding canned tools for them. Don't worry if your particular analysis is not covered,
+just use whatever tools you want with either the LogLikelihood function itself, or the output of make_objective
+(if your tools expect a positional-argument only function).
 """
 import warnings
 
@@ -9,7 +12,6 @@ from scipy.optimize import minimize, brentq
 from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
 
 try:
     # Import imunuit here, so blueice works also for people who don't have it installed.
@@ -21,6 +23,9 @@ except ImportError:
                   "We've had several issues with these on degenerate problems, you're advised to do "
                   "conda install -c astropy iminuit")
     DEFAULT_BESTFIT_ROUTINE = 'scipy'
+
+__all__ = ['make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio', 'one_parameter_interval',
+           'NoOpimizationNecessary', 'OptimizationFailed']
 
 
 class NoOpimizationNecessary(Exception):

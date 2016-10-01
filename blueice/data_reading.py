@@ -1,3 +1,6 @@
+"""Utilities for reading files specified in configuration dictionaries
+"""
+
 from copy import deepcopy
 import os
 import pandas as pd
@@ -5,6 +8,8 @@ import numpy as np
 
 from .utils import data_file_name
 from .utils import read_pickle
+
+__all__ = ['read_csv', 'read_files_in']
 
 
 def read_csv(filename):

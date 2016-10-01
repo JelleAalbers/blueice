@@ -1,6 +1,7 @@
 from tqdm import tqdm
 from .model import Model
 
+__all__ = ['create_models_in_parallel']
 
 def create_models_in_parallel(configs, ipp_client=None, block=False):
     """Return Models for each configuration in configs.

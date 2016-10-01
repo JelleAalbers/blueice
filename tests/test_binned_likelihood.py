@@ -1,6 +1,5 @@
 from blueice.test_helpers import *
 from blueice.likelihood import BinnedLogLikelihood
-from blueice.likelihood import beeston_barlow_root2
 from blueice.source import DensityEstimatingSource
 
 from scipy import stats

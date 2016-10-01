@@ -1,5 +1,11 @@
+"""Log likelihood constructors: the heart of blueice.
+
+
+"""
+
 from collections import OrderedDict
 from copy import deepcopy
+from functools import wraps
 import warnings
 
 import numpy as np
@@ -10,7 +16,35 @@ from multihist import Histdd
 from .model import Model
 from .parallel import create_models_in_parallel
 from .pdf_morphers import MORPHERS
-from .utils import combine_dicts
+from .utils import combine_dicts, inherit_docstring_from
+
+__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood',
+           'NotPreparedException', 'InvalidShapeParameter']
+
+##
+# Decorators for methods which have to be run after prepare or set_data
+##
+def _needs_preparation(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if not self.is_prepared:
+            if not len(self.shape_parameters):
+                # preparation is going to be trivial, just do it
+                self.prepare()
+            else:
+                raise NotPreparedException("%s requires you to first prepare the likelihood function using prepare()" %
+                                           f.__name__)
+        return f(self, *args, **kwargs)
+    return wrapper
+
+
+def _needs_data(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if not self.is_data_set:
+            raise NotPreparedException("%s requires you to first set the data using set_data()" % (f.__name__))
+        return f(self, *args, **kwargs)
+    return wrapper
 
 
 class LogLikelihoodBase(object):
@@ -59,13 +93,13 @@ class LogLikelihoodBase(object):
         # Interpolators created by morphers. These map zs to...
         self.mu_interpolator = None                          # rates for each source
         self.ps_interpolator = None                          # (source, event) p-values (unbinned), or pmf grid (binned)
-        self.n_model_events_interpolator = lambda x: None    # number of events per bin observed in Monte Carlo /
-                                                             # calibration data that gave rise to the model.
+        # number of events per bin observed in Monte Carlo / calibration data that gave rise to the model.
+        self.n_model_events_interpolator = lambda x: None
         self.n_model_events = None
 
     def prepare(self, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
-        This will  compute the models for each shape parameters anchor value combination.
+        This will compute the models for each shape parameter anchor value combination.
         """
         if len(self.shape_parameters):
             self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
@@ -93,26 +127,18 @@ class LogLikelihoodBase(object):
             self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
                                                                    extra_dims=[len(self.source_name_list)],
                                                                    anchor_models=self.anchor_models)
-        self._prepare_for_data()
 
         self.is_data_set = False
         self.is_prepared = True
 
+    @_needs_preparation
     def set_data(self, d):
         """Prepare the dataset d for likelihood function evaluation
         :param d: Dataset, must be an indexable object that provides the measurement dimensions
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
-        if not self.is_prepared:
-            if len(self.shape_parameters):
-                raise NotPreparedException("You have shape parameters in your model: "
-                                       "first do .prepare(), then set the data.")
-            else:
-                self.prepare()
-
         self._data = d
-        self._prepare_data(d)
         self.is_data_set = True
 
     def add_rate_parameter(self, source_name, log_prior=None):
@@ -142,7 +168,7 @@ class LogLikelihoodBase(object):
                                             "base setting must have a numerical default.")
             anchors = {z: z for z in anchors}
 
-        if not is_numeric: 
+        if not is_numeric:
             self._has_non_numeric = True
         if not is_numeric and base_value is None:
             raise InvalidShapeParameter("For non-numeric settings, you must specify what number will represent "
@@ -164,6 +190,7 @@ class LogLikelihoodBase(object):
         else:
             raise ValueError("Non-existing parameter %s" % parameter_name)
 
+    @_needs_data
     def __call__(self, livetime_days=None, compute_pdf=False, full_output=False, **kwargs):
         """Evaluate the likelihood function. Pass any values for parameters as keyword arguments.
         For values not passed, their base values will be assumed.
@@ -172,10 +199,7 @@ class LogLikelihoodBase(object):
         :param full_output: instead of returning just the loglikelihood, return also the adjusted mus and ps as well.
         :param compute_pdf: compute new PDFs instead of interpolating the PDF at the requested parameters.
         """
-        if not self.is_data_set:
-            raise NotPreparedException("First do .set_data(dataset), then start evaluating the likelihood function")
         result = 0
-
         rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
 
         if len(self.shape_parameters):
@@ -225,9 +249,9 @@ class LogLikelihoodBase(object):
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
 
-        # Perform fits to background calibration data if needed: 
+        # Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
-        mus, ps = self._analytical_pmf_adjustment(mus, ps, n_model_events)
+        mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
         # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus >= 0) & (mus < float('inf'))):
@@ -244,10 +268,18 @@ class LogLikelihoodBase(object):
         else:
             return result
 
+    def adjust_expectations(self, mus, ps, n_model_events):
+        """Adjust uncertain (mus, pmfs) based on the observed data.
 
-    def _analytical_pmf_adjustment(self, mus, ps, n_model_events):
-        """Adjust PMF for finite model statistics.
-        By default, no such adjustment is performed."""
+        If the density is derived from a finite-statistics sample (n_model_events array of events per bin),
+        we can take into account this uncertainty by modifying the likelihood function.
+
+        For a binned likelihood, this means adding the expected number of events for each bin for each source as
+        nuisance parameters constrained by Poisson terms around the number of events observed in the model.
+        While these nuisance parameters could be optimized numerically along with the main parameters,
+        for a given value of the main parameters these per-bin nuisance parameters can often be estimated analytically,
+        as shown by Beeston & Barlow (1993).
+        """
         return mus, ps
 
     def _kwargs_to_settings(self, **kwargs):
@@ -313,7 +345,6 @@ class LogLikelihoodBase(object):
 
     def _compute_single_model(self, **kwargs):
         """Return a model formed using the base config, using kwargs as overrides"""
-        # We need to make a new model. Make its config:
         _, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
         config = combine_dicts(self.pdf_base_config, shape_parameter_settings, deep_copy=True)
 
@@ -323,46 +354,41 @@ class LogLikelihoodBase(object):
     ##
     # Methods to override
     ##
-    def _prepare_data(self, d):
-        raise NotImplementedError
-
-    def _prepare_for_data(self):
-        raise NotImplementedError
-
-    def _compute_likelihood(self, mus, ps):
-        raise NotImplementedError
-
     def _compute_single_pdf(self, **kwargs):
-        #fcn to compute a model _at_ the called parameters
-        #to return: mus, ps, n_model_events
+        """Return likelihood arguments for a single newly computed model,
+        formed using the base config, using kwargs as overrides.
+        Returns mus, ps, n_model_events
+        """
         raise NotImplementedError
 
 
 class UnbinnedLogLikelihood(LogLikelihoodBase):
-   def _prepare_for_data(self):
-       pass
 
-   def _prepare_data(self, d):
-       """Called in set_data, specific to type of likelihood"""
-       if len(self.shape_parameters):
-           self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
-                                                                 extra_dims=[len(self.source_name_list), len(d)],
-                                                                 anchor_models=self.anchor_models)
-       else:
-           self.ps = self.base_model.score_events(d)
+    @inherit_docstring_from(LogLikelihoodBase)
+    def set_data(self, d):
+        LogLikelihoodBase.set_data(self, d)
+        if len(self.shape_parameters):
+            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
+                                                                  extra_dims=[len(self.source_name_list), len(d)],
+                                                                  anchor_models=self.anchor_models)
+        else:
+            print("Scoring events")
+            self.ps = self.base_model.score_events(d)
 
-   def _compute_single_pdf(self, **kwargs):
+    @inherit_docstring_from(LogLikelihoodBase)
+    def _compute_single_pdf(self, **kwargs):
         model = self._compute_single_model(**kwargs)
         mus = model.expected_events()
         ps = model.score_events(self._data)
         return mus, ps, None
 
-   def _compute_likelihood(self, mus, pdf_values_at_events):
-       return extended_loglikelihood(mus, pdf_values_at_events,
-                                     outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
+    def _compute_likelihood(self, mus, pdf_values_at_events):
+        return extended_loglikelihood(mus, pdf_values_at_events,
+                                      outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
 
 
 class LogLikelihood(UnbinnedLogLikelihood):
+    """Deprecated alias for UnbinnedLogLikelihood"""
 
     def __init__(self, *args, **kwargs):
         warnings.warn("Unbinned log likelihood has been renamed to UnbinnedLogLikelihood", PendingDeprecationWarning)
@@ -370,13 +396,16 @@ class LogLikelihood(UnbinnedLogLikelihood):
 
 
 class BinnedLogLikelihood(LogLikelihoodBase):
+
     def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
         LogLikelihoodBase.__init__(self, pdf_base_config, likelihood_config, **kwargs)
         pdf_base_config['pdf_interpolation_method'] = 'piecewise'
-        
+
         self.model_statistical_uncertainty_handling = self.config.get('model_statistical_uncertainty_handling')
 
-    def _prepare_for_data(self):
+    @inherit_docstring_from(LogLikelihoodBase)
+    def prepare(self, *args):
+        LogLikelihood.prepare(self, *args)
         self.ps, self.n_model_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
@@ -384,35 +413,29 @@ class BinnedLogLikelihood(LogLikelihoodBase):
                                                                   extra_dims=list(self.ps.shape),
                                                                   anchor_models=self.anchor_models)
 
-
             if self.model_statistical_uncertainty_handling is not None:
                 self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
                                                                                   extra_dims=list(self.ps.shape),
                                                                                   anchor_models=self.anchor_models)
 
-    def _prepare_data(self, d):
-        """Called in set_data, specific to type of likelihood"""
+    @inherit_docstring_from(LogLikelihoodBase)
+    def set_data(self, d):
+        LogLikelihoodBase.set_data(self, d)
         # Bin the data in the analysis space
         dimnames, bins = zip(*self.base_model.config['analysis_space'])
         self.data_events_per_bin = Histdd(bins=bins, axis_names=dimnames)
-
         self.data_events_per_bin.add(*self.base_model.to_analysis_dimensions(d))
 
+    @inherit_docstring_from(LogLikelihoodBase)
     def _compute_single_pdf(self, **kwargs):
         model = self._compute_single_model(**kwargs)
         mus = model.expected_events()
         ps, n_model_events = model.pmf_grids()
-
         return mus, ps, n_model_events
 
-    def _analytical_pmf_adjustment(self, mus, pmfs, n_model_events):
-        """
-            Some nuisance parameters may be minimized here before the likelihood call
-
-            For the Beeston-Barlow method, a calibration or MC data set together with the "signal data" 
-            can be minimized analytically to yield maximum likelihood estimates for the bin expectation value from 
-            that source. 
-        """
+    @_needs_data
+    @inherit_docstring_from(LogLikelihoodBase)
+    def adjust_expectations(self, mus, pmfs, n_model_events):
         if self.model_statistical_uncertainty_handling == 'bb_single':
 
             source_i = self.config.get('bb_single_source')
@@ -424,7 +447,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
             # Get the number of events expected for the sources we will NOT adjust
             counts_per_bin = pmfs.copy()
-            for i,(mu, _x) in enumerate(zip(mus, counts_per_bin)):
+            for i, (mu, _x) in enumerate(zip(mus, counts_per_bin)):
                 if i != source_i:
                     _x *= mu
                 else:
@@ -434,7 +457,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             p_calibration = mus[source_i] / n_model_events[source_i].sum()
 
             a_bins = n_model_events[source_i]
-            
+
             A_bins_1, A_bins_2 = beeston_barlow_roots(a_bins, p_calibration, u_bins, self.data_events_per_bin.histogram)
             assert np.all(A_bins_1 <= 0)  # it seems(?) the 1st root is always negative
 
@@ -449,14 +472,16 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         return mus, pmfs
 
     def _compute_likelihood(self, mus, pmfs):
-        #Return log likelihood (binned)
+        """Return binned Poisson log likelihood
+        :param mus: numpy array with expected rates for each source
+        :param pmfs: array (sources, *analysis_space) of PMFs for each source in each bin
+        """
         expected_counts = pmfs.copy()
         for mu, _p_bin_source in zip(mus, expected_counts):
             _p_bin_source *= mu         # Works because of numpy view magic...
-        expected_total = np.sum(expected_counts, axis = 0)
+        expected_total = np.sum(expected_counts, axis=0)
 
         observed_counts = self.data_events_per_bin.histogram
-
 
         ret = observed_counts * np.log(expected_total) - expected_total - gammaln(observed_counts + 1.).real
         return np.sum(ret)
@@ -471,7 +496,7 @@ class InvalidShapeParameter(Exception):
 
 
 def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
-    """Evaluate an extended likelihood function
+    """Evaluate an extended unbinned likelihood function
     :param mu: array of n_sources: expected number of events
     :param ps: array of (n_sources, n_events): pdf value for each source and event
     :param outlier_likelihood: if an event has p=0, give it this likelihood (instead of 0, which makes the whole
@@ -484,14 +509,24 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
         p_events[True ^ (p_events > 0)] = outlier_likelihood
     return -mu.sum() + np.sum(np.log(p_events))
 
-def beeston_barlow_root1(a,p,U,d):
-    return  ((-U*p - U + a*p + d*p - 
-    np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p
-    - 2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
 
-def beeston_barlow_root2(a,p,U,d):  
-    return ((-U*p - U + a*p + d*p + np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p
-    - 2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
+def beeston_barlow_root1(a, p, U, d):
+    """Solution to the Beeston-Barlow equations for a single finite-statics source and several infinite-statistics
+    sources. This is the WRONG root, as far as we can tell -- DO NOT USE IT!!
+    We retained it only to keep checking that it is the wrong root. It will be removed soon, when we are more confident.
+    """
+    return ((-U*p - U + a*p + d*p -
+             np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p -
+                     2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
 
-def beeston_barlow_roots(a,p,U,d):
-    return beeston_barlow_root1(a,p,U,d), beeston_barlow_root2(a,p,U,d)
+
+def beeston_barlow_root2(a, p, U, d):
+    """Solution to the Beeston-Barlow equations for a single finite-statics source and several infinite-statistics
+    sources. This is the 'right' root, as far as we can tell anyway."""
+    return ((-U*p - U + a*p + d*p +
+             np.sqrt(U**2*p**2 + 2*U**2*p + U**2 + 2*U*a*p**2 + 2*U*a*p -
+                     2*U*d*p**2 - 2*U*d*p + a**2*p**2 + 2*a*d*p**2 + d**2*p**2))/(2*p*(p + 1)))
+
+
+def beeston_barlow_roots(a, p, U, d):
+    return beeston_barlow_root1(a, p, U, d), beeston_barlow_root2(a, p, U, d)

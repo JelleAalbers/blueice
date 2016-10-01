@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 
 from . import utils
 
+__all__ = ['Model']
+
 
 class Model(object):
     """Model for dataset simulation and analysis: collects several Sources, which do the actual work
@@ -86,8 +88,8 @@ class Model(object):
 
     def pmf_grids(self):
         """Return array (n_sources, *analysis_space_shape) of integrated PDFs in the analysis space for each source"""
-        return np.stack([s.get_pmf_grid()[0] for s in self.sources]), np.stack([s.get_pmf_grid()[1] for s in self.sources])
-
+        return (np.stack([s.get_pmf_grid()[0] for s in self.sources]),
+                np.stack([s.get_pmf_grid()[1] for s in self.sources]))
 
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
