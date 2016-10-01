@@ -105,7 +105,6 @@ def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwarg
 # Wrapper function for scipy minimization. If you want to use another minimizer, you'd write a similar wrapper
 ##
 
-
 def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bounds_to_minimizer=False, **kwargs):
     """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
     Returns {param: best fit}, maximum loglikelihood.

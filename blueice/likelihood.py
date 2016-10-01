@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 from scipy import stats
-from scipy.special import loggamma
+from scipy.special import gammaln
 from multihist import Histdd
 
 from .model import Model
@@ -55,10 +55,12 @@ class LogLikelihoodBase(object):
         self.ps = None                # ps of the data
 
         # If there are shape parameters:
-        self.anchor_models = OrderedDict()  # dictionary mapping z-score -> actual model
-        self.mu_interpolator = None     # function mapping z scores -> rates for each source
-        self.ps_interpolator = None     # function mapping z scores -> (source, event) p-values
-        self.n_model_events_interpolator = lambda x : None     # function mapping to interpolate # of source MC/calibration
+        self.anchor_models = OrderedDict()  # dictionary mapping model zs -> actual model
+        # Interpolators created by morphers. These map zs to...
+        self.mu_interpolator = None                          # rates for each source
+        self.ps_interpolator = None                          # (source, event) p-values (unbinned), or pmf grid (binned)
+        self.n_model_events_interpolator = lambda x: None    # number of events per bin observed in Monte Carlo /
+                                                             # calibration data that gave rise to the model.
         self.n_model_events = None
 
     def prepare(self, ipp_client=None):
@@ -385,8 +387,8 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
             if self.model_statistical_uncertainty_handling is not None:
                 self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
-                                                                    extra_dims=list(self.ps.shape),
-                                                                    anchor_models=self.anchor_models)
+                                                                                  extra_dims=list(self.ps.shape),
+                                                                                  anchor_models=self.anchor_models)
 
     def _prepare_data(self, d):
         """Called in set_data, specific to type of likelihood"""
@@ -456,7 +458,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         observed_counts = self.data_events_per_bin.histogram
 
 
-        ret = observed_counts * np.log(expected_total) - expected_total - loggamma(observed_counts + 1.).real
+        ret = observed_counts * np.log(expected_total) - expected_total - gammaln(observed_counts + 1.).real
         return np.sum(ret)
 
 
