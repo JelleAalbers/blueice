@@ -2,11 +2,25 @@
 If you want to analyze with your own tools, you can just ignore these,
 only make_objective is of general use (for wrapping optimizers).
 """
+import warnings
+
 import numpy as np
 from scipy.optimize import minimize, brentq
 from scipy import stats
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+
+
+try:
+    # Import imunuit here, so blueice works also for people who don't have it installed.
+    from iminuit.util import make_func_code     # noqa
+    from iminuit import Minuit                  # noqa
+    DEFAULT_BESTFIT_ROUTINE = 'minuit'
+except ImportError:
+    warnings.warn("You don't have iminuit installed; switching to scipy minimizers."
+                  "We've had several issues with these on degenerate problems, you're advised to do "
+                  "conda install -c astropy iminuit")
+    DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
 
 class NoOpimizationNecessary(Exception):
@@ -139,15 +153,79 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
     return results,  -optresult.fun
 
 
+def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs):
+    """Minimizes the LogLikelihood function lf over the parameters not specified in kwargs.
+    Returns {param: best fit}, maximum loglikelihood.
+
+    Optimization is performed with iminuits Minuit
+    :param minimize_kwargs: dictionary with optimz to minimize
+
+    Other kwargs are passed to make_objective.
+    """
+    if minimize_kwargs is None:
+        minimize_kwargs = {}
+
+    # By default, use quiet evaluation, since this is called iteratively in profile likelihoods.
+    minimize_kwargs.setdefault('print_level', 0)
+    minimize_kwargs.setdefault('pedantic', False)
+
+    try:
+        f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+    except NoOpimizationNecessary:
+        return {}, lf(**kwargs)
+
+    # The full iminuit API is documented here:
+    # http://iminuit.readthedocs.io/en/latest/api.html
+
+    # Make a dict for minuit with a key for each parameter and the initial guesses as values
+    # TODO add also errors, limits and fixed parameters to this dictionary
+    minuit_dict = minimize_kwargs
+    for i, name in enumerate(names):
+        minuit_dict[name] = guess[i]
+
+    class MinuitWrap:
+        """Wrapper for functions to be called by Minuit
+
+        s_args must be a list of argument names of function f
+        the names in this list must be the same as the keys of
+        the dictionary passed to the Minuit call."""
+        def __init__(self, f, s_args):
+            self.func = f
+            self.s_args = s_args
+            self.func_code = make_func_code(s_args)
+
+        def __call__(self, *args):
+            return self.func(args)
+
+    # Make the Minuit object
+    m = Minuit(MinuitWrap(f, names), **minuit_dict)
+
+    # Call migrad to do the actual minimization
+    m.migrad()
+
+    # TODO return more information, such as m.errors
+
+    return m.values, -1*m.fval  # , m.errors
+
+
+def _get_bestfit_routine(key):
+    if hasattr(key, '__call__'):
+        return key
+    if key is None:
+        key = DEFAULT_BESTFIT_ROUTINE
+    return BESTFIT_ROUTINES[key]
+
+
 def one_parameter_interval(lf, target, bound,
                            confidence_level=0.9, kind='upper',
-                           bestfit_routine=bestfit_scipy, **kwargs):
+                           bestfit_routine=None, **kwargs):
     """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
     This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
     target: parameter of lf to constrain
     bound: bound(s) for the line search. For upper and lower: single value, for central: 2-tuple.
     kwargs: dictionary with arguments to bestfit
     """
+    bestfit_routine = _get_bestfit_routine(bestfit_routine)
     if target is None:
         target = lf.source_list[-1] + '_rate_multiplier'
 
@@ -188,7 +266,9 @@ def one_parameter_interval(lf, target, bound,
         return brentq(t, global_best, bound, args=[confidence_level])
 
 
-def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
+def plot_likelihood_ratio(lf, *space, vmax=15,
+                          bestfit_routine=None,
+                          plot_kwargs=None, **kwargs):
     """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
@@ -197,8 +277,10 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
     Further arguments are passed to lf, arguments not passed are fitted at each point.
     :return: Nothing
     """
+    bestfit_routine = _get_bestfit_routine(bestfit_routine)
     if plot_kwargs is None:
         plot_kwargs = {}
+
     results = []
     label = "Log likelihood ratio"
     if len(space) == 1:
@@ -206,7 +288,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
         for q in x:
             lf_kwargs = {dim: q}
             lf_kwargs.update(kwargs)
-            results.append(bestfit_scipy(lf, **lf_kwargs)[1])
+            results.append(bestfit_routine(lf, **lf_kwargs)[1])
         results = np.array(results)
         results = results.max() - results
         plt.plot(x, results, **plot_kwargs)
@@ -223,7 +305,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
             for z2 in y:
                 lf_kwargs = {dims[0]: z1, dims[1]: z2}
                 lf_kwargs.update(kwargs)
-                results[-1].append(bestfit_scipy(lf, **lf_kwargs)[1])
+                results[-1].append(bestfit_routine(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
         results = results.max() - results
@@ -233,3 +315,6 @@ def plot_likelihood_ratio(lf, *space, vmax=15, plot_kwargs=None, **kwargs):
         plt.ylabel(dims[1])
     else:
         raise ValueError("Can't handle %d dimensions" % len(space))
+
+
+BESTFIT_ROUTINES = dict(scipy=bestfit_scipy, minuit=bestfit_minuit)
