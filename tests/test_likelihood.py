@@ -59,6 +59,40 @@ def test_shape_params():
     assert lf(strlen_multiplier=1.5) < lf()
 
 
+def test_rate_uncertainty():
+    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
+    lf.add_rate_uncertainty('s0', 0.5)
+
+    # Make a single event at x=0
+    lf.set_data(np.zeros(1,
+                         dtype=[('x', np.float), ('source', np.int)]))
+
+    log_prior = stats.norm(1, 0.5).logpdf
+    assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
+    assert lf(s0_rate_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0)) + log_prior(2)
+
+
+def test_shape_uncertainty():
+    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
+
+    with pytest.raises(InvalidParameterSpecification):
+        lf.add_shape_uncertainty('strlen_multiplier', 0.5, {1: 'x', 2: 'hi', 3: 'wha'})
+
+    lf.add_shape_uncertainty(setting_name='strlen_multiplier',
+                             fractional_uncertainty=0.5,
+                             anchor_zs={1: 'x', 2: 'hi', 3: 'wha'},
+                             base_value=1)
+
+    # Make a single event at x=0
+    lf.prepare()
+    lf.set_data(np.zeros(1,
+                         dtype=[('x', np.float), ('source', np.int)]))
+
+    log_prior = stats.norm(1, 0.5).logpdf
+    assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
+    assert lf(strlen_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0)) + log_prior(2)
+
+
 def test_multisource_likelihood():
     lf = UnbinnedLogLikelihood(test_conf(n_sources=2))
 
@@ -86,7 +120,7 @@ def test_multisource_likelihood():
     assert lf(some_multiplier=2) < lf()
 
 
-def test_early_call():
+def test_error_handling():
     lf = UnbinnedLogLikelihood(test_conf())
     d = lf.base_model.simulate()
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 2))
@@ -104,6 +138,10 @@ def test_early_call():
     lf.set_data(d)
 
     lf()
+
+    with pytest.raises(InvalidParameter):
+        lf(blargh=41)
+
 
 def test_noninterpolated_pdf():
     #

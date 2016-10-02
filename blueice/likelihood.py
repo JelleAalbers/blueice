@@ -3,15 +3,15 @@
 
 """
 
+import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from functools import wraps
-import warnings
 
 import numpy as np
+from multihist import Histdd
 from scipy import stats
 from scipy.special import gammaln
-from multihist import Histdd
 
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
@@ -253,7 +253,7 @@ class LogLikelihoodBase(object):
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
         mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
-        # Handle unphysical rates. Depending on the config, either error or return -float('inf') as loglikelihood
+        # Check for negative rates. Depending on the config, either error or return -float('inf') as loglikelihood
         if not np.all((mus >= 0) & (mus < float('inf'))):
             if self.config.get('unphysical_behaviour') == 'error':
                 raise ValueError("Unphysical rates: %s" % str(mus))
@@ -331,17 +331,19 @@ class LogLikelihoodBase(object):
         """Adds a rate parameter to the likelihood function with Gaussian prior"""
         self.add_rate_parameter(source_name, log_prior=stats.norm(1, fractional_uncertainty).logpdf)
 
-    def add_shape_uncertainty(self, setting_name, fractional_uncertainty, anchor_zs=(-2, -1, 0, 1, 2)):
+    def add_shape_uncertainty(self, setting_name, fractional_uncertainty, anchor_zs=(-2, -1, 0, 1, 2), base_value=None):
         """Adds a shape parameter to the likelihood function, with Gaussian prior around the default value.
-        :param anchor_zs: list/tuple/array of z-scores to use as the anchor points
+        :param fractional uncertainty: Relative uncertainty on the default value.
+        Other parameters as in add_shape_parameter.
         """
-        mu = self.pdf_base_config.get(setting_name)
-        if not isinstance(mu, (float, int)):
-            raise ValueError("%s does not have a numerical default setting" % setting_name)
-        std = mu * fractional_uncertainty
-        self.add_shape_parameter(setting_name,
-                                 anchors=mu + np.array(anchor_zs) * std,
-                                 log_prior=stats.norm(mu, mu * fractional_uncertainty).logpdf)
+        # Call add_shape_parameter without a prior first, then inject the prior later.
+        # It's a bit of a hack, but there is some validation / default-setting code for base_value we don't want to
+        # replicate.
+        self.add_shape_parameter(setting_name, anchor_zs, base_value=base_value)
+        anchors, log_prior, base_value = self.shape_parameters[setting_name]
+        self.shape_parameters[setting_name] = (anchors,
+                                               stats.norm(base_value, base_value * fractional_uncertainty).logpdf,
+                                               base_value)
 
     def _compute_single_model(self, **kwargs):
         """Return a model formed using the base config, using kwargs as overrides"""
@@ -372,7 +374,6 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
                                                                   extra_dims=[len(self.source_name_list), len(d)],
                                                                   anchor_models=self.anchor_models)
         else:
-            print("Scoring events")
             self.ps = self.base_model.score_events(d)
 
     @inherit_docstring_from(LogLikelihoodBase)
@@ -440,7 +441,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
             source_i = self.config.get('bb_single_source')
             if source_i is None:
-                raise ValueError("For the Beeson-Barlow single-source method you need to  specify a source")
+                raise ValueError("You need to specify bb_single_source to use bb_single_source expectation adjustment")
             source_i = self.base_model.get_source_i(source_i)
 
             assert pmfs.shape == n_model_events.shape
