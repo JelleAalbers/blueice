@@ -4,6 +4,9 @@ blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo genera
     :target: https://travis-ci.org/JelleAalbers/blueice
 .. image:: https://coveralls.io/repos/github/JelleAalbers/blueice/badge.svg?branch=master
     :target: https://coveralls.io/github/JelleAalbers/blueice?branch=master
+.. image:: https://readthedocs.org/projects/blueice/badge/?version=latest
+         :target: http://blueice.readthedocs.org/en/latest/?badge=latest
+         :alt: Documentation Status
 
 
 Source code: `https://github.com/JelleAalbers/blueice`
