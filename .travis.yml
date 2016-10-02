@@ -20,7 +20,10 @@ before_install:
 install:
   # Download numpy and matplotlib binaries from binstar
   - conda install --yes python=$TRAVIS_PYTHON_VERSION numpy scipy matplotlib pandas
-  - conda install -c astropy iminuit
+  # For some reason we get 'core dumped' errors using this on travis.
+  # It works fine on my windows machine...
+  # So on travis let's install iminuit via pip
+  # - conda install -c astropy iminuit
   # Setup coverage for converage measurement
   - pip install coverage
   - pip install coveralls
