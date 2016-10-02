@@ -7,10 +7,13 @@
   * Adjustment of expected counts per bin using Beeston-Barlow method for one source
   * Generalized to multiple sources, but only one with finite statistics.
   * Only for binned likelihoods.
-* iminuit integration, new default minimizerif installed (#10, #13)
+* iminuit integration, use as default minimizer if installed (#10, #13)
 * compute_pdf option to do full likelihood model computation on the fly (#11)
 * HistogramPDF to provide just histogram lookup/interpolation from DensityEstimatingSource (#12)
-
+* inference functions -> LogLikelihood methods
+* Most-used functions/classes available under blueice (blueice.Source, blueice.UnbinnedLogLikelihood, ...)
+* compute_pdf auto-called, consistent handling of events_per_day
+* Start of documentation, readthedocs integration
 
 ------------------
 0.4.0 (2016/08/22)

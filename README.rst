@@ -25,5 +25,5 @@ This package contains only generic code: you'll need a few things to make it use
 Contributors
 ============
 * Jelle Aalbers
-* Knut Dundas Mora
+* Knut Dundas Morå
 * Bart Pelssers
