@@ -1,5 +1,6 @@
 from collections import OrderedDict
 
+import blueice.exceptions
 import pytest
 import numpy as np
 from blueice import pdf_morphers
@@ -12,7 +13,7 @@ def test_morpher_api():
     for name, morph_class in pdf_morphers.MORPHERS.items():
         print("Testing %s" % name)
 
-        with pytest.raises(pdf_morphers.NoShapeParameters):
+        with pytest.raises(blueice.exceptions.NoShapeParameters):
             morph_class(config=conf, shape_parameters=OrderedDict())
 
         shape_pars = OrderedDict([('bla', ({-1: -1, 0: 0, 1: 1}, None, None))])

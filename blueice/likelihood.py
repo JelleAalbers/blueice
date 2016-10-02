@@ -13,13 +13,13 @@ from scipy import stats
 from scipy.special import gammaln
 from multihist import Histdd
 
+from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
 from .parallel import create_models_in_parallel
 from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 
-__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood',
-           'NotPreparedException', 'InvalidShapeParameter']
+__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood']
 
 ##
 # Decorators for methods which have to be run after prepare or set_data
@@ -164,17 +164,17 @@ class LogLikelihoodBase(object):
         if not isinstance(anchors, dict):
             # Convert anchors list to a dictionary
             if not is_numeric:
-                raise InvalidShapeParameter("When specifying anchors only by setting values, "
-                                            "base setting must have a numerical default.")
+                raise InvalidParameterSpecification("When specifying anchors only by setting values, "
+                                                    "base setting must have a numerical default.")
             anchors = {z: z for z in anchors}
 
         if not is_numeric:
             self._has_non_numeric = True
         if not is_numeric and base_value is None:
-            raise InvalidShapeParameter("For non-numeric settings, you must specify what number will represent "
-                                        "the default value (the base model setting)")
+            raise InvalidParameterSpecification("For non-numeric settings, you must specify what number will represent "
+                                                "the default value (the base model setting)")
         if is_numeric and base_value is not None:
-            raise InvalidShapeParameter("For numeric settings, base_value is an unnecessary argument.")
+            raise InvalidParameterSpecification("For numeric settings, base_value is an unnecessary argument.")
 
         self.shape_parameters[setting_name] = (anchors, log_prior, base_value)
 
@@ -188,7 +188,7 @@ class LogLikelihoodBase(object):
         elif parameter_name.endswith('_rate_multiplier'):
             return 0, float('inf')
         else:
-            raise ValueError("Non-existing parameter %s" % parameter_name)
+            raise InvalidParameter("Non-existing parameter %s" % parameter_name)
 
     @_needs_data
     def __call__(self, livetime_days=None, compute_pdf=False, full_output=False, **kwargs):
@@ -295,7 +295,7 @@ class LogLikelihoodBase(object):
                 s_name = k[:-16]
                 if s_name in self.source_name_list:
                     continue
-            raise ValueError("%s is not a known shape or rate parameter!" % k)
+            raise InvalidParameter("%s is not a known shape or rate parameter!" % k)
 
         shape_parameter_settings = dict()
         for setting_name, (_, _, base_value) in self.shape_parameters.items():
@@ -485,14 +485,6 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
         ret = observed_counts * np.log(expected_total) - expected_total - gammaln(observed_counts + 1.).real
         return np.sum(ret)
-
-
-class NotPreparedException(Exception):
-    pass
-
-
-class InvalidShapeParameter(Exception):
-    pass
 
 
 def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):

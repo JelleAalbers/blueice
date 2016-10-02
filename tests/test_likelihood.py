@@ -1,5 +1,6 @@
 from blueice.test_helpers import *
-from blueice.likelihood import UnbinnedLogLikelihood, InvalidShapeParameter, NotPreparedException
+from blueice.likelihood import UnbinnedLogLikelihood
+from blueice.exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 import pytest
 import scipy.stats as sps
 
@@ -36,7 +37,7 @@ def test_no_shape_params():
 def test_shape_params():
     lf = UnbinnedLogLikelihood(test_conf(n_sources=1))
     lf.add_rate_parameter('s0')
-    with pytest.raises(InvalidShapeParameter):
+    with pytest.raises(InvalidParameterSpecification):
         lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'})
     lf.add_shape_parameter('strlen_multiplier', {1: 'q', 2: 'hi', 3: 'wha'}, base_value=1)
     d = lf.base_model.simulate()

@@ -7,11 +7,13 @@ just use whatever tools you want with either the LogLikelihood function itself, 
 """
 import warnings
 
-import numpy as np
-from scipy.optimize import minimize, brentq
-from scipy import stats
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
+from scipy.optimize import minimize, brentq
+from tqdm import tqdm
+
+from .exceptions import NoOpimizationNecessary, OptimizationFailed
 
 try:
     # Import imunuit here, so blueice works also for people who don't have it installed.
@@ -24,16 +26,7 @@ except ImportError:
                   "conda install -c astropy iminuit")
     DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
-__all__ = ['make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio', 'one_parameter_interval',
-           'NoOpimizationNecessary', 'OptimizationFailed']
-
-
-class NoOpimizationNecessary(Exception):
-    pass
-
-
-class OptimizationFailed(Exception):
-    pass
+__all__ = ['make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio', 'one_parameter_interval']
 
 
 def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
