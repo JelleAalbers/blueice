@@ -123,7 +123,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
         minimize_kwargs = {}
 
     try:
-        f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+        f, names, guess, bounds = lf.make_objective(minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
     except NoOpimizationNecessary:
         return {}, lf(**kwargs)
 
@@ -169,7 +169,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     minimize_kwargs.setdefault('pedantic', False)
 
     try:
-        f, names, guess, bounds = make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
+        f, names, guess, bounds = lf.make_objective(lf, minus=True, rates_in_log_space=rates_in_log_space, **kwargs)
     except NoOpimizationNecessary:
         return {}, lf(**kwargs)
 
