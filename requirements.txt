@@ -6,4 +6,6 @@ scipy>=0.15
 tqdm                 # Progress bar library
 multihist>=0.4.1     # Histogram library
 pytest>=3.0.0        # 3.0 needed for a yield statement in a fixture
-#iminuit              # The Minuit minimizer
+
+# Not required, but recommended:
+#  iminuit              # The Minuit minimizer
