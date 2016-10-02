@@ -19,11 +19,7 @@ import os
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-# sys.path.insert(0, os.path.abspath('../blueice'))
-# sys.path.insert(0, os.path.abspath('..'))
-for x in sys.path:
-    if not x.lower().startswith('c'):
-        print(x)
+sys.path.insert(0, os.path.abspath('..'))
 
 from unittest.mock import MagicMock
 sys.modules.update((mod_name, MagicMock()) for mod_name in ['numpy', 'pandas',
