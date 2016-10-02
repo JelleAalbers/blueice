@@ -7,9 +7,8 @@ import scipy.stats as sps
 
 def test_likelihood_value():
     """Just a sanity check to show we get the right likelihood values"""
-    lf = UnbinnedLogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
     lf.add_rate_parameter('s0')
-    lf.base_model.sources[0].events_per_day = 1
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,

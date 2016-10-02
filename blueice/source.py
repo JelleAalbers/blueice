@@ -31,20 +31,31 @@ class Source(object):
     """Base class for a source of events."""
 
     def __init__(self, config, *args, **kwargs):
+        # Child classes should call this init LAST, before doing their own stuff. If they have to do their own stuff
+        # after init, it goes in
         defaults = dict(name='unnamed_source',
                         label='Unnamed source',
                         color='black',            # Color to use in plots
+
+                        # Defaults for events_per_day and fraction_in_range. These immediately get converted into
+                        # attributes, which can be modified dynamically (e.g. Not only can these be overriden in config,
+                        # some child classes set them dynamically (eg DensityEstimatingSource will set them based on
+                        # the sample events you pass in).
                         events_per_day=0,         # Events per day this source produces (detected or not).
                         fraction_in_range=1,      # Fraction of simulated events that fall in analysis space.
+
+                        # List of attributes you want to be stored in cache. When the same config is passed later
+                        # (ignoreing the dont_hash_settings), these attributes will be set from the cached file.
+                        cache_attributes=[],
+
+                        # Set to True if you want to call compute_pdf at a time of your convenience, rather than
+                        # at the end of init.
+                        delay_pdf_computation=False,
 
                         # List of names of settings which are not included in the hash. These should be all settings
                         # that have no impact on the pdf (e.g. whether to show progress bars or not).
                         dont_hash_settings=[],
                         extra_dont_hash_settings=[],
-
-                        # List of attributes you want to be stored in cache. When the same config is passed later
-                        # (ignoreing the dont_hash_settings), these attributes will be set from the cached file.
-                        cache_attributes=[],
 
                         # If true, never retrieve things from the cache. Saving to cache still occurs.
                         force_recalculation=False,
@@ -53,6 +64,7 @@ class Source(object):
                         cache_dir='pdf_cache',
                         )
         c = utils.combine_dicts(defaults, config)
+        c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
         c['dont_hash_settings'] += ['force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
                                     'label', 'color', 'extra_dont_hash_settings']
 
@@ -60,9 +72,16 @@ class Source(object):
         c['dont_hash_settings'] += c['extra_dont_hash_settings']
         del c['extra_dont_hash_settings']
 
-        # Name becomes an attribute.
         self.name = c['name']
         del c['name']
+
+        # events_per_day and fraction_in_range may be modified / set properly for the first time later (see comments
+        # in 'defaults' above)
+        if hasattr(self, 'events_per_day'):
+            raise ValueError("events_per_day defaults should be set via config!")
+        self.events_per_day = c['events_per_day']
+        self.fraction_in_range = c['fraction_in_range']
+        self.pdf_has_been_computed = False
 
         # Compute a hash to uniquely identify the relevant settings for this source.
         hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
@@ -89,9 +108,22 @@ class Source(object):
 
         self.config = c
 
+        if self.from_cache:
+            assert self.pdf_has_been_computed
+        else:
+            if not self.config['delay_pdf_computation']:
+                self.compute_pdf()
+
     def compute_pdf(self):
-        """If anything needs to be done to compute the PDF, but after the config has been initialized, do it here"""
-        pass
+        """Initialize, then cache the PDF. This is called
+         * AFTER the config initialization and
+         * ONLY when source is not already loaded from cache. The caching mechanism exists to store the quantities you
+           need to compute here.
+        """
+        if self.from_cache:
+            raise RuntimeError("compute_pdf called on a source that is loaded from cache!")
+        self.pdf_has_been_computed = True
+        self.save_to_cache()
 
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
@@ -127,8 +159,7 @@ class HistogramPdfSource(Source):
                         pdf_interpolation_method='linear',)
         config = utils.combine_dicts(defaults, config)
         config['cache_attributes'] = config.get('cache_attributes', []) + \
-            ['_pdf_histogram', '_n_events_histogram', 'fraction_in_range', '_bin_volumes']
-        self.pdf_has_been_computed = False
+            ['_pdf_histogram', '_n_events_histogram', '_bin_volumes']
         Source.__init__(self, config, *args, **kwargs)
 
     def build_histogram(self):
@@ -137,24 +168,23 @@ class HistogramPdfSource(Source):
         raise NotImplementedError
 
     def compute_pdf(self):
-        if not self.from_cache:
-            # Fill the histogram with either events or an evaluated pdf
-            self.build_histogram()
-
-        # Construct a linear interpolator between the histogram bins
-        if self.config['pdf_interpolation_method'] == 'linear':
-            self._pdf_interpolator = RegularGridInterpolator(self._pdf_histogram.bin_centers(),
-                                                             self._pdf_histogram.histogram)
-
-        self.save_to_cache()
-        self.pdf_has_been_computed = True
+        # Fill the histogram with either events or an evaluated pdf
+        self.build_histogram()
         Source.compute_pdf(self)
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
             raise PDFNotComputedException("Attempt to call a PDF that has not been computed")
+
         method = self.config['pdf_interpolation_method']
+
         if method == 'linear':
+            if not hasattr(self, '_pdf_interpolator'):
+                # First call:
+                # Construct a linear interpolator between the histogram bins
+                self._pdf_interpolator = RegularGridInterpolator(self._pdf_histogram.bin_centers(),
+                                                                 self._pdf_histogram.histogram)
+
             # The interpolator works only within the bin centers region: clip the input data to that.
             # Assuming you've cut the data to the analysis space first (which you should have!)
             # this is equivalent to assuming constant density in the outer half of boundary bins
@@ -186,7 +216,7 @@ class DensityEstimatingSource(HistogramPdfSource):
         """
         defaults = dict(n_events_for_pdf=1e6)
         config = utils.combine_dicts(defaults, config)
-        config['cache_attributes'] = config.get('cache_attributes', []) + ['events_per_day']
+        config['cache_attributes'] = config.get('cache_attributes', [])
         HistogramPdfSource.__init__(self, config, *args, **kwargs)
 
     def build_histogram(self):

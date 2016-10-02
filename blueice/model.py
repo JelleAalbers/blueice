@@ -33,7 +33,6 @@ class Model(object):
                                        source_config,
                                        exclude=['sources', 'default_source_class', 'class'])
             s = source_class(conf)
-            s.compute_pdf()
             self.sources.append(s)
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
