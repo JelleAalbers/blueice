@@ -18,12 +18,15 @@ from .model import Model
 from .parallel import create_models_in_parallel
 from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
+from . import inference
 
 __all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood']
+
 
 ##
 # Decorators for methods which have to be run after prepare or set_data
 ##
+
 def _needs_preparation(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
@@ -362,6 +365,10 @@ class LogLikelihoodBase(object):
         Returns mus, ps, n_model_events
         """
         raise NotImplementedError
+
+# Add the inference methods from .inference
+for methodname in inference.__all__:
+    setattr(LogLikelihoodBase, methodname, getattr(inference, methodname))
 
 
 class UnbinnedLogLikelihood(LogLikelihoodBase):

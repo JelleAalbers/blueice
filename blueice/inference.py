@@ -4,6 +4,8 @@ Blueice's main purpose in life is to provide you with a likelihood function, but
 are so common we could not resist adding canned tools for them. Don't worry if your particular analysis is not covered,
 just use whatever tools you want with either the LogLikelihood function itself, or the output of make_objective
 (if your tools expect a positional-argument only function).
+
+Functions from this file are also made accesible as methods of LogLikelihoodBase.
 """
 import warnings
 

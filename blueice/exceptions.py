@@ -22,4 +22,3 @@ class InvalidParameter(Exception):
 class InvalidParameterSpecification(Exception):
     """An add_x_parameter method was called wrongly"""
     pass
-
