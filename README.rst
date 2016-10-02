@@ -7,6 +7,7 @@ blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo genera
 
 
 Source code: `https://github.com/JelleAalbers/blueice`
+Documentation: `http://blueice.readthedocs.io/en/latest/index.html`
 
 About
 =====
@@ -19,6 +20,6 @@ This package contains only generic code: you'll need a few things to make it use
 
 Contributors
 ============
-Jelle Aalbers
-Knut Dundas Mora
-Bart Pelssers
+* Jelle Aalbers
+* Knut Dundas Mora
+* Bart Pelssers
