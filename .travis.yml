@@ -20,7 +20,7 @@ before_install:
 install:
   # Download numpy and matplotlib binaries from binstar
   - conda install --yes python=$TRAVIS_PYTHON_VERSION numpy scipy matplotlib pandas
-  #- conda install -c astropy iminuit
+  - conda install -c astropy iminuit
   # Setup coverage for converage measurement
   - pip install coverage
   - pip install coveralls
