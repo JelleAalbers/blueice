@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 from . import utils
 
@@ -103,6 +102,7 @@ class Model(object):
         ax: plot on this Axes
         Dims: numbers of dimension(s) to plot in. Can be up to two dimensions.
         """
+        import matplotlib.pyplot as plt
         dim_names, bins = zip(*self.config['analysis_space'])
 
         if dims is None:
