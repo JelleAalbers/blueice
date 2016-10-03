@@ -12,19 +12,19 @@
  * MonteCarloSource: + get that sample from the source's own simulate method.
    Use if you have a Monte Carlo to generate events. This was the original 'niche' for which blueice was created.
 """
-from functools import reduce
-import os
 import inspect
+import os
+from functools import reduce
 
 import numpy as np
+from blueice.exceptions import PDFNotComputedException
 from multihist import Histdd
 from scipy.interpolate import RegularGridInterpolator
 
 from . import utils
 from .data_reading import read_files_in
 
-__all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarloSource',
-           'PDFNotComputedException']
+__all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarloSource']
 
 
 class Source(object):
@@ -135,7 +135,7 @@ class Source(object):
         raise NotImplementedError
 
     def get_pmf_grid(self, *args):
-        """Returns pmf_grid, n_events, bin_volumes:
+        """Returns pmf_grid, n_events:
          - pmf_grid: pmf per bin in the analysis space
          - n_events: if events were used for density estimation: number of events per bin (for DensityEstimatingSource)
            otherwise float('inf')
@@ -284,7 +284,3 @@ class MonteCarloSource(DensityEstimatingSource):
         for _ in range(int(n_events // batch_size)):
             result = self.simulate(n_events=batch_size)
             yield result, batch_size
-
-
-class PDFNotComputedException(Exception):
-    pass

@@ -1,24 +1,32 @@
-class NoOpimizationNecessary(Exception):
+class BlueIceException(Exception):
     pass
 
 
-class OptimizationFailed(Exception):
+class NoOpimizationNecessary(BlueIceException):
     pass
 
 
-class NotPreparedException(Exception):
+class OptimizationFailed(BlueIceException):
     pass
 
 
-class NoShapeParameters(Exception):
+class NotPreparedException(BlueIceException):
     pass
 
 
-class InvalidParameter(Exception):
+class NoShapeParameters(BlueIceException):
+    pass
+
+
+class InvalidParameter(BlueIceException):
     """A particular parameter to the likelihood is not present"""
     pass
 
 
-class InvalidParameterSpecification(Exception):
+class InvalidParameterSpecification(BlueIceException):
     """An add_x_parameter method was called wrongly"""
+    pass
+
+
+class PDFNotComputedException(BlueIceException):
     pass
