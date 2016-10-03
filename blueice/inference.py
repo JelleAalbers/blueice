@@ -9,7 +9,6 @@ Functions from this file are also made accesible as methods of LogLikelihoodBase
 """
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 from scipy.optimize import minimize, brentq
@@ -276,6 +275,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
     Further arguments are passed to lf, arguments not passed are fitted at each point.
     :return: Nothing
     """
+    import matplotlib.pyplot as plt
     bestfit_routine = _get_bestfit_routine(bestfit_routine)
     if plot_kwargs is None:
         plot_kwargs = {}
