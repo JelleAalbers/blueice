@@ -1,6 +1,10 @@
+import matplotlib
+matplotlib.use('agg')
+
 from blueice.test_helpers import *
 from blueice.inference import *
 from blueice.likelihood import LogLikelihood
+
 import matplotlib.pyplot as plt
 from scipy import stats
 
@@ -38,12 +42,12 @@ def test_fit_minuit():
     assert 's0_rate_multiplier' in fit_result
 
     # Non-numeric shape parameter
-    #lf = LogLikelihood(test_conf())
-    #lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'}, base_value=1)
-    #lf.prepare()
-    #lf.set_data(lf.base_model.simulate())
-    #fit_result, ll = bestfit_minuit(lf)
-    #assert 'strlen_multiplier' in fit_result
+    lf = LogLikelihood(test_conf())
+    lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'}, base_value=1)
+    lf.prepare()
+    lf.set_data(lf.base_model.simulate())
+    fit_result, ll = bestfit_minuit(lf)
+    assert 'strlen_multiplier' in fit_result
 
 def test_fit_scipy():
     # Single rate parameter

@@ -9,7 +9,7 @@ from .utils import combine_dicts
 import numpy as np
 from scipy import stats
 import matplotlib
-matplotlib.use('agg')
+#matplotlib.use('agg')
 
 
 class GaussianSourceBase(Source):
