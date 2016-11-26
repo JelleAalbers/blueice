@@ -145,6 +145,9 @@ class Source(object):
         raise NotImplementedError
 
     def simulate(self, n_events):
+        """Simulate n_events according to the source. It's ok to return less than n_events events,
+        if you decide some events are not detectable.
+        """
         raise NotImplementedError
 
 

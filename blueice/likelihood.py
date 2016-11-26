@@ -503,7 +503,7 @@ def extended_loglikelihood(mu, ps, outlier_likelihood=0.0):
     loglikelihood infinite)
     :return: ln(likelihood)
     """
-    p_events = np.sum(mu[:, np.newaxis] * ps, axis=0)
+    p_events = np.nansum(mu[:, np.newaxis] * ps, axis=0)
     if outlier_likelihood != 0:
         # Replace all likelihoods which are not positive numbers (i.e. 0, negative, or nan) with outlier_likelihood
         p_events[True ^ (p_events > 0)] = outlier_likelihood
