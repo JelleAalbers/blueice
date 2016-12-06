@@ -14,6 +14,7 @@ from scipy import stats
 from scipy.optimize import minimize, brentq
 from tqdm import tqdm
 
+from copy import deepcopy
 from .exceptions import NoOpimizationNecessary, OptimizationFailed
 
 try:
@@ -132,10 +133,13 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
 
     if not optresult.success:
         # Try again with a more robust, but slower method
+        #if method is defined in kwargs, it must be removed 
+        minimize_kwargs_temp = deepcopy(minimize_kwargs)
+        minimize_kwargs_temp.pop('method',None)
         optresult = minimize(f, guess,
                              bounds=bounds if pass_bounds_to_minimizer else None,
                              method='Nelder-Mead',
-                             **minimize_kwargs)
+                             **minimize_kwargs_temp)
         if not optresult.success:
             raise OptimizationFailed("Optimization failure: ", optresult)
 
