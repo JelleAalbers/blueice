@@ -20,7 +20,7 @@ from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
 
-__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'loglikelihood_sum']
+__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum']
 
 
 ##
