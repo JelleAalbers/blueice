@@ -531,7 +531,7 @@ def beeston_barlow_root2(a, p, U, d):
 def beeston_barlow_roots(a, p, U, d):
     return beeston_barlow_root1(a, p, U, d), beeston_barlow_root2(a, p, U, d)
 
-class LogLikelihoodSum(Object):
+class LogLikelihoodSum(object):
     """
         Class that takes a list of likelihoods to be minimized together, and 
         provides an interface to the inference methods and evaluation similar to likelihoods. 
