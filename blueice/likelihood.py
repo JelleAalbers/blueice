@@ -76,6 +76,7 @@ class LogLikelihoodBase(object):
 
         self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
         self.source_name_list = [s.name for s in self.base_model.sources]
+        self.source_allowed_negative = [s.config.get("allow_negative") for s in self.base_model.sources]
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -189,6 +190,9 @@ class LogLikelihoodBase(object):
             anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
             return min(anchor_settings), max(anchor_settings)
         elif parameter_name.endswith('_rate_multiplier'):
+            for source_name, allow_negative in zip(self.source_name_list,self.source_allowed_negative):
+                if parameter_name.startswith(source_name) and allow_negative==True:
+                    return float('-inf'), float('inf')
             return 0, float('inf')
         else:
             raise InvalidParameter("Non-existing parameter %s" % parameter_name)
@@ -257,11 +261,26 @@ class LogLikelihoodBase(object):
         mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
         # Check for negative rates. Depending on the config, either error or return -float('inf') as loglikelihood
-        if not np.all((mus >= 0) & (mus < float('inf'))):
-            if self.config.get('unphysical_behaviour') == 'error':
-                raise ValueError("Unphysical rates: %s" % str(mus))
-            else:
-                return -float('inf')
+        #If any source is allowed to be negative, check the sources one by one 
+        if not any(self.source_allowed_negative):
+            if not np.all((mus >= 0) & (mus < float('inf'))):
+                if self.config.get('unphysical_behaviour') == 'error':
+                    raise ValueError("Unphysical rates: %s" % str(mus))
+                else:
+                    return -float('inf')
+        else:
+            if not any(mus < float('inf')):
+                if self.config.get('unphysical_behaviour') == 'error':
+                    raise ValueError("Unphysical rates: %s" % str(mus))
+                else:
+                    return -float('inf')
+
+            for mu,allowed_negative in zip(mus,self.source_allowed_negative):
+                if not (0. <=mu) and (not allowed_negative): 
+                    if self.config.get('unphysical_behaviour') == 'error':
+                        raise ValueError("Unphysical rates: %s" % str(mus))
+                    else:
+                        return -float('inf')
 
         # Get the loglikelihood. At last!
         result += self._compute_likelihood(mus, ps)
@@ -546,27 +565,35 @@ class LogLikelihoodSum(object):
         self.source_list = [] # DOES NOT EXIST IN LF!
         #in order to pass to confidence interval
         self.pdf_base_config  ={}#might also have to be fudged
+
+        self.likelihood_parameters=[]
         
         
         for ll in likelihood_list:
             self.likelihood_list.append(ll)
             self.rate_parameters.update(ll.rate_parameters)
             self.shape_parameters.update(ll.shape_parameters)
+            parameter_names = []
             
             for rate_parameter_name in ll.rate_parameters.keys():
+                parameter_names.append(rate_parameter_name + '_rate_multiplier')
                 base_value = ll.pdf_base_config.get(rate_parameter_name)
                 if base_value is not None:
                     self.pdf_base_config[rate_parameter_name] = base_value
             for shape_parameter_name in ll.shape_parameters.keys():
+                parameter_names.append(shape_parameter_name)
                 base_value = ll.pdf_base_config.get(shape_parameter_name)
                 if base_value is not None:
                     self.pdf_base_config[shape_parameter_name] = base_value
+            self.likelihood_parameters.append(parameter_names)
                 
     
     def __call__(self,livetime_days=None, **kwargs):
         ret = 0.
-        for ll in self.likelihood_list:
-            ret += ll(livetime_days=livetime_days, **kwargs)
+        for ll,parameter_names in zip(self.likelihood_list, self.likelihood_parameters):
+            pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
+ 
+            ret += ll(livetime_days=livetime_days, **pass_kwargs)
         return ret
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
