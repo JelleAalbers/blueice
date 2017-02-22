@@ -15,7 +15,7 @@ from scipy.special import gammaln
 
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
-from .parallel import create_models_in_parallel
+from .parallel import create_models_ipyparallel
 from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
@@ -119,7 +119,7 @@ class LogLikelihoodBase(object):
                 configs.append(config)
 
             # Create the new models
-            models = create_models_in_parallel(configs, ipp_client,
+            models = create_models_ipyparallel(configs, ipp_client,
                                                block=self.config.get('block_during_paralellization', False))
 
             # Add the new models to the anchor_models dict

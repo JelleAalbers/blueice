@@ -1,6 +1,8 @@
 from copy import deepcopy
 import os
 import pickle
+import pickle as _builtin_pickle
+import dill as pickle
 from hashlib import sha1
 
 import numpy as np
@@ -92,7 +94,7 @@ def hashablize(obj):
 
 def deterministic_hash(thing):
     """Return a deterministic hash of a container hierarchy using hashablize, pickle and sha1"""
-    return sha1(pickle.dumps(hashablize(thing))).hexdigest()
+    return sha1(_builtin_pickle.dumps(hashablize(thing))).hexdigest()
 
 
 def _events_to_analysis_dimensions(events, analysis_space):

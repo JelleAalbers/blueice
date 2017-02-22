@@ -62,11 +62,13 @@ class Source(object):
                         # If true, never save things to the cache. Loading from cache still occurs.
                         never_save_to_cache=False,
                         cache_dir='pdf_cache',
+                        task_dir='pdf_tasks',
                         )
         c = utils.combine_dicts(defaults, config)
         c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
         c['dont_hash_settings'] += ['force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
-                                    'label', 'color', 'extra_dont_hash_settings']
+                                    'label', 'color', 'extra_dont_hash_settings', 'delay_pdf_computation',
+                                    'cache_dir', 'task_dir']
 
         # Merge the 'extra' (per-source) dont hash settings into the normal dont_hash_settings
         c['dont_hash_settings'] += c['extra_dont_hash_settings']
@@ -111,7 +113,9 @@ class Source(object):
         if self.from_cache:
             assert self.pdf_has_been_computed
         else:
-            if not self.config['delay_pdf_computation']:
+            if self.config['delay_pdf_computation']:
+                self.prepare_task()
+            else:
                 self.compute_pdf()
 
     def compute_pdf(self):
@@ -130,6 +134,11 @@ class Source(object):
         if not self.from_cache and not self.config['never_save_to_cache']:
             utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']}, self._cache_filename)
         return self._cache_filename
+
+    def prepare_task(self):
+        """Create a task file in the task_dir for delayed/remote computation"""
+        task_filename = os.path.join(self.config['task_dir'], self.hash)
+        utils.save_pickle(task_filename, (self.__class__, self.config))
 
     def pdf(self, *args):
         raise NotImplementedError
