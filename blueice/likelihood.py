@@ -269,7 +269,7 @@ class LogLikelihoodBase(object):
                 else:
                     return -float('inf')
         else:
-            if not any(mus < float('inf')):
+            if (not any(mus < float('inf'))) or (np.sum(mus)<0):
                 if self.config.get('unphysical_behaviour') == 'error':
                     raise ValueError("Unphysical rates: %s" % str(mus))
                 else:
@@ -617,6 +617,21 @@ class LogLikelihoodSum(object):
     #def make_objective(self, guess=None, minus=True, rates_in_log_space=False, **kwargs):
     #    return make_objective(self, guess,minus,rates_in_log_space,**kwargs)
     
+class LogAncillaryLikelihood(object):
+    def __init__(self, mu_name, sigma_value):
+        self.rate_parameters = dict()
+        self.shape_parameters = dict()
+        self.source_list = [] # DOES NOT EXIST IN LF!
+        #in order to pass to confidence interval
+        self.pdf_base_config  ={}#might also have to be fudged
+
+        self.sigma_value = sigma_value
+
+
+        self.shape_parameters.update(OrderedDict(mu_name,(None,None,None)))
+
+
+
 # Add the inference methods from .inference
 for methodname in inference.__all__:
     setattr(LogLikelihoodSum, methodname, getattr(inference, methodname))
