@@ -69,6 +69,9 @@ def read_pickle(filename):
 
 def save_pickle(stuff, filename):
     """Saves stuff in a pickle at filename"""
+    dirname = os.path.dirname(filename)
+    if dirname != '' and not os.path.exists(dirname):
+        os.makedirs(dirname)
     with open(filename, mode='wb') as outfile:
         pickle.dump(stuff, outfile)
 

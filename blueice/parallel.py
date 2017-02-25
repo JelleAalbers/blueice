@@ -2,6 +2,7 @@
 """
 
 import os
+import time
 from concurrent.futures import ProcessPoolExecutor
 
 from tqdm import tqdm
@@ -37,10 +38,11 @@ def compute_single(hash, task_dir='pdf_tasks', result_dir='pdf_cache'):
     os.remove(task_filename)
 
     if s.hash != hash:
+        # TODO: Add debug message
         # Bad stuff, if this occurs you may want to look into hashablize...
         # Or maybe dill messes things up...
-        print("Source hash somehow changed from %s to %s!" %(s.hash, hash))
-        print("Renaming results file...")
+        #print("Source hash somehow changed from %s to %s!" %(s.hash, hash))
+        #print("Renaming results file...")
         os.rename(s._cache_filename, result_filename)
 
 
@@ -49,7 +51,7 @@ def compute_many(hashes, n_cpus=1, *args, **kwargs):
         pool = ProcessPoolExecutor(max_workers=n_cpus)
         futures = []
         for h in hashes:
-            futures.append(pool.submit(h, *args, **kwargs))
+            futures.append(pool.submit(compute_single, *args, hash=h, **kwargs))
 
         # Wait fot the futures to complete; give a progress bar
         with tqdm(total=len(futures), desc='Computing on %d cores' % n_cpus) as pbar:
@@ -60,6 +62,7 @@ def compute_many(hashes, n_cpus=1, *args, **kwargs):
                         _done_is.append(f_i)
                         pbar.update(1)
                 futures = [f for f_i, f in enumerate(futures) if not f_i in _done_is]
+                time.sleep(0.1)
     else:
         for h in tqdm(hashes, desc='Computing on one core'):
             compute_single(h, *args, **kwargs)

@@ -11,6 +11,9 @@
 
  * MonteCarloSource: + get that sample from the source's own simulate method.
    Use if you have a Monte Carlo to generate events. This was the original 'niche' for which blueice was created.
+
+Parent methods (e.g. Source.compute_pdf) are meant to be called at the end of the child methods
+that override them (e.g. HistogramPdfSource.compute_pdf).
 """
 import inspect
 import os
@@ -30,9 +33,10 @@ __all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarl
 class Source(object):
     """Base class for a source of events."""
 
+    def __repr__(self):
+        return "%s[%s]" % (self.name, self.hash if hasattr(self, 'hash') else 'nohashknown')
+
     def __init__(self, config, *args, **kwargs):
-        # Child classes should call this init LAST, before doing their own stuff. If they have to do their own stuff
-        # after init, it goes in
         defaults = dict(name='unnamed_source',
                         label='Unnamed source',
                         color='black',            # Color to use in plots
@@ -138,7 +142,7 @@ class Source(object):
     def prepare_task(self):
         """Create a task file in the task_dir for delayed/remote computation"""
         task_filename = os.path.join(self.config['task_dir'], self.hash)
-        utils.save_pickle(task_filename, (self.__class__, self.config))
+        utils.save_pickle((self.__class__, self.config), task_filename)
 
     def pdf(self, *args):
         raise NotImplementedError
@@ -186,7 +190,7 @@ class HistogramPdfSource(Source):
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
-            raise PDFNotComputedException("Attempt to call a PDF that has not been computed")
+            raise PDFNotComputedException("%s: Attempt to call a PDF that has not been computed" % self)
 
         method = self.config['pdf_interpolation_method']
 
