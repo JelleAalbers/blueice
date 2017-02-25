@@ -28,7 +28,8 @@ except ImportError:
                   "conda install -c astropy iminuit")
     DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
-__all__ = ['make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio', 'one_parameter_interval']
+__all__ = ['make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio', 'one_parameter_interval',
+           'bestfit_emcee']
 
 
 def make_objective(lf, guess=None, minus=True, rates_in_log_space=False, **kwargs):
@@ -208,6 +209,79 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     # TODO return more information, such as m.errors
 
     return m.values, -1*m.fval  # , m.errors
+
+
+# Must be defined outside bestfit_emcee to avoid pickling error
+# TODO: will inevitably create problems, globals are bad...
+def _lnprob(x):
+    _lnprob.t.update(1)
+    return _lnprob.f(x)
+
+
+def bestfit_emcee(ll, quiet=False, return_errors=False,
+                  n_walkers=40, n_steps=200, n_burn_in=100, n_threads=1,
+                  **kwargs):
+    """Optimize the loglikelihood function ll using emcee's MCMC.
+    The starting position of the walkers is [0.95, 1.05] * the default values / any guess you put in.
+    So if your default value is 0 you have to put in a custom guess. (TODO: fix this)
+
+    :param ll: LogLikelihood to optimize
+    :param quiet: if False (default), show corner plot and print out passthrough info
+    :param return_errors: if True, return a third result, dictionary with 1 sigma errors for each parameter
+    :param n_walkers: Number of walkers to use for the MCMC
+    :param n_steps: Number of steps to use for MCMC
+    :param n_burn_in: Number of burn-in steps to use. These are added to n_steps but thrown away.
+    :param n_threads: Number of concurrent threads to use
+    :param kwargs: Passed to ll.make_objective.
+    :return:
+    """
+    import emcee
+
+    f, names, guess, _  = ll.make_objective(minus=False, **kwargs)
+
+    n_dim = len(guess)
+
+    # Hack to show a progress bar during the computation
+    _lnprob.f = f
+    _lnprob.t = tqdm(desc='Computing likelihoods',
+                    total=n_walkers * n_steps / n_threads)
+
+    # Run the MCMC sampler
+    p0 = np.array([np.random.uniform(0.95, 1.05, size=n_dim)  * guess for i in range(n_walkers)])
+    sampler = emcee.EnsembleSampler(n_walkers, n_dim, _lnprob, threads=n_threads)
+    sampler.run_mcmc(p0, n_steps)
+
+    # Remove first n_burn_in samples for each walker (burn-in)
+    samples = sampler.chain[:, n_burn_in:, :].reshape((-1, n_dim))
+
+    if not quiet:
+        import corner
+        import matplotlib.pyplot as plt
+
+        # "This number should be between approximately 0.25 and 0.5 if everything went as planned"
+        # http://dan.iel.fm/emcee/current/user/quickstart/
+        print("Mean acceptance fraction: {0:.3f}".format(np.mean(sampler.acceptance_fraction)))
+
+        samples = sampler.chain.reshape((-1, n_dim))
+        corner.corner(samples, show_titles=True, labels=names,
+                      range=[0.99] * len(names),
+                      truths=guess,
+        )
+        plt.show()
+
+    fit_result = np.median(samples, axis=0)
+    fit_result_dict = {names[i]: fit_result[i] for i in range(len(names))}
+
+    best_ll = ll(**fit_result_dict)
+
+    if return_errors:
+        l, r = np.percentile(samples, 100 * stats.norm.cdf([-1, 1]), axis=0)
+        fit_errors = (r - l)/2
+        fit_errors_dict = {names[i]: fit_errors[i] for i in range(len(names))}
+
+        return fit_result_dict, best_ll, fit_errors_dict
+
+    return fit_result_dict, best_ll
 
 
 def _get_bestfit_routine(key):
