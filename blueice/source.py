@@ -46,6 +46,7 @@ class Source(object):
                         # some child classes set them dynamically (eg DensityEstimatingSource will set them based on
                         # the sample events you pass in).
                         events_per_day=0,         # Events per day this source produces (detected or not).
+                        rate_multiplier=1,        # Rate multiplier (independent of loglikelihood's rate multiplier)
                         fraction_in_range=1,      # Fraction of simulated events that fall in analysis space.
 
                         # List of attributes you want to be stored in cache. When the same config is passed later
@@ -70,7 +71,8 @@ class Source(object):
                         )
         c = utils.combine_dicts(defaults, config)
         c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
-        c['dont_hash_settings'] += ['force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
+        c['dont_hash_settings'] += ['rate_multiplier',
+                                    'force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
                                     'label', 'color', 'extra_dont_hash_settings', 'delay_pdf_computation',
                                     'cache_dir', 'task_dir']
 

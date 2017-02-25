@@ -20,6 +20,9 @@ class Model(object):
                                          'force_recalculation'])
         self.config = utils.combine_dicts(defaults, config, kwargs, deep_copy=True)
 
+        if 'rate_multiplier' in self.config:
+            raise ValueError("Don't put a setting named rate_multiplier in the model config please...")
+
         # Initialize the sources. Each gets passed the entire config (without the 'sources' field)
         # with the settings in their entry in the sources field added to it.
         self.sources = []
@@ -31,8 +34,15 @@ class Model(object):
             conf = utils.combine_dicts(self.config,
                                        source_config,
                                        exclude=['sources', 'default_source_class', 'class'])
+
+            # Special handling for the _rate_multiplier settings
+            source_name = conf.get('name', 'WHAAAAAA_YOUDIDNOTNAMEYOURSOURCETHIS')
+            conf['rate_multiplier'] = conf.get('%s_rate_multiplier' % source_name, 1)
+            conf = {k:v for k,v in conf.items() if not k.endswith('_rate_multiplier')}
+
             s = source_class(conf)
             self.sources.append(s)
+
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
     def get_source(self, source_id):
@@ -95,7 +105,7 @@ class Model(object):
         """
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])
-        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range
+        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * s.config['rate_multiplier']
 
     def show(self, d, ax=None, dims=None):
         """Plot the events from dataset d in the analysis range
