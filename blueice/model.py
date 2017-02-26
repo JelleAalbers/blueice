@@ -76,11 +76,15 @@ class Model(object):
             rate_multipliers = dict()
         ds = []
         for s_i, source in enumerate(self.sources):
-            mu = source.events_per_day * rate_multipliers.get(source.name, 1)
-            mu *= livetime_days if livetime_days is not None else self.config['livetime_days']
+            mu = self.expected_events(source)
+            if livetime_days is not None:
+                # Adjust exposure to custom livetime-days
+                mu *= livetime_days / self.config['livetime_days']
+
             d = source.simulate(np.random.poisson(mu))
             d['source'] = s_i
             ds.append(d)
+
         d = np.concatenate(ds)
         if restrict:
             d = self.range_cut(d)
