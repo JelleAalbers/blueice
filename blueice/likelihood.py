@@ -12,6 +12,7 @@ import numpy as np
 from multihist import Histdd
 from scipy import stats
 from scipy.special import gammaln
+from tqdm import tqdm
 
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
@@ -126,7 +127,7 @@ class LogLikelihoodBase(object):
                                                    block=self.config.get('block_during_paralellization', False))
 
             else:
-                models = [Model(c) for c in configs]
+                models = [Model(c) for c in tqdm(configs, desc="Preparing model computation tasks")]
 
                 hashes = set()
                 for m in models:
@@ -136,7 +137,7 @@ class LogLikelihoodBase(object):
                 compute_many(hashes, n_cores)
 
                 # Reload models so computation takes effect
-                models = [Model(c) for c in configs]
+                models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
 
             # Add the new models to the anchor_models dict
             for zs, model in zip(zs_list, models):

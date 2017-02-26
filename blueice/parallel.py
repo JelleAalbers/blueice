@@ -1,6 +1,6 @@
 """Parallel and delayed computation of models/sources for blueice.
 """
-
+import logging
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -11,6 +11,7 @@ from .utils import read_pickle
 from .model import Model
 
 __all__ = ['create_models_ipyparallel', 'compute_single', 'compute_many', 'compute_all']
+log = logging.getLogger('blueice.parallel')
 
 
 def compute_single(hash, task_dir='pdf_tasks', result_dir='pdf_cache'):
@@ -18,7 +19,7 @@ def compute_single(hash, task_dir='pdf_tasks', result_dir='pdf_cache'):
     # Do we have result with this hash?
     result_filename = os.path.join(result_dir, hash)
     if os.path.exists(result_filename):
-        print("Task %s already computed, nothing done." % hash)
+        log.debug("Task %s already computed, nothing done." % hash)
         return
 
     # Do we have a task with this hash?
@@ -38,11 +39,10 @@ def compute_single(hash, task_dir='pdf_tasks', result_dir='pdf_cache'):
     os.remove(task_filename)
 
     if s.hash != hash:
-        # TODO: Add debug message
+        # TODO: Fix this
         # Bad stuff, if this occurs you may want to look into hashablize...
         # Or maybe dill messes things up...
-        #print("Source hash somehow changed from %s to %s!" %(s.hash, hash))
-        #print("Renaming results file...")
+        log.debug("Source hash somehow changed from %s to %s!" %(s.hash, hash))
         os.rename(s._cache_filename, result_filename)
 
 
