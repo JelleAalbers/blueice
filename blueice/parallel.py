@@ -57,6 +57,7 @@ def compute_many(hashes, n_cpus=1, *args, **kwargs):
                 _done_is = []
                 for f_i, f in enumerate(futures):
                     if f.done():
+                        f.result()     # Raises exception on error
                         _done_is.append(f_i)
                         pbar.update(1)
                 futures = [f for f_i, f in enumerate(futures) if not f_i in _done_is]
