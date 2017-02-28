@@ -29,8 +29,11 @@ class GaussianSource(GaussianSourceBase):
     def compute_pdf(self):
         self.events_per_day *= self.config.get('some_multiplier', 1)
         self.events_per_day *= len(self.config.get('strlen_multiplier', 'x'))
+        super().compute_pdf()
 
     def pdf(self, *args):
+        if not self.pdf_has_been_computed:
+            raise RuntimeError("Trying to call a PDF that hasn't been computed!")
         return stats.norm(self.config['mu'], self.config['sigma']).pdf(args[0])
 
 

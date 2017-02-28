@@ -71,7 +71,7 @@ class Source(object):
                         )
         c = utils.combine_dicts(defaults, config)
         c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
-        c['dont_hash_settings'] += ['rate_multiplier',
+        c['dont_hash_settings'] += ['hash', 'rate_multiplier',
                                     'force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
                                     'label', 'color', 'extra_dont_hash_settings', 'delay_pdf_computation',
                                     'cache_dir', 'task_dir']
@@ -91,9 +91,14 @@ class Source(object):
         self.fraction_in_range = c['fraction_in_range']
         self.pdf_has_been_computed = False
 
-        # Compute a hash to uniquely identify the relevant settings for this source.
-        hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
-        self.hash = utils.deterministic_hash(hash_config)
+        # What is this source's id?
+        if 'hash' in c:
+            # id already given in config: probably because config has already been 'pimped' with loaded objects
+            self.hash = c['hash']
+        else:
+            # Compute id from config
+            hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
+            self.hash = c['hash'] = utils.deterministic_hash(hash_config)
 
         # What filename would a source with this config have in the cache?
         if not os.path.exists(c['cache_dir']):
@@ -118,11 +123,14 @@ class Source(object):
 
         if self.from_cache:
             assert self.pdf_has_been_computed
+
         else:
             if self.config['delay_pdf_computation']:
+                # self.config['delay_pdf_computation'] = False   # So we won't
                 self.prepare_task()
             else:
                 self.compute_pdf()
+
 
     def compute_pdf(self):
         """Initialize, then cache the PDF. This is called
@@ -130,15 +138,16 @@ class Source(object):
          * ONLY when source is not already loaded from cache. The caching mechanism exists to store the quantities you
            need to compute here.
         """
-        if self.from_cache:
-            raise RuntimeError("compute_pdf called on a source that is loaded from cache!")
+        if self.pdf_has_been_computed:
+            raise RuntimeError("compute_pdf called twice on a source!")
         self.pdf_has_been_computed = True
         self.save_to_cache()
 
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
         if not self.from_cache and not self.config['never_save_to_cache']:
-            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']}, self._cache_filename)
+            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']},
+                              self._cache_filename)
         return self._cache_filename
 
     def prepare_task(self):

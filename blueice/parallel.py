@@ -38,12 +38,10 @@ def compute_single(hash, task_dir='pdf_tasks', result_dir='pdf_cache'):
     # Remove the task file
     os.remove(task_filename)
 
+    assert os.path.exists(result_filename)
+
     if s.hash != hash:
-        # TODO: Fix this
-        # Bad stuff, if this occurs you may want to look into hashablize...
-        # Or maybe dill messes things up...
-        log.debug("Source hash somehow changed from %s to %s!" %(s.hash, hash))
-        os.rename(s._cache_filename, result_filename)
+        raise ValueError("source hash changed somehow??")
 
 
 def compute_many(hashes, n_cpus=1, *args, **kwargs):
