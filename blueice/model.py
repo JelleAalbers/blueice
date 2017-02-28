@@ -66,9 +66,8 @@ class Model(object):
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
         return d[mask]
 
-    def simulate(self, restrict=True, rate_multipliers=None, livetime_days=None):
+    def simulate(self, rate_multipliers=None, livetime_days=None):
         """Makes a toy dataset, poisson sampling simulated events from all sources.
-        :param restrict: if True, return only events inside the analysis range
         :param rate_multipliers: dict {source name: multiplier} to change rate of individual sources
         :param livetime_days: days of exposure to simulate (affects rate of all sources)
         """
@@ -76,7 +75,9 @@ class Model(object):
             rate_multipliers = dict()
         ds = []
         for s_i, source in enumerate(self.sources):
-            mu = self.expected_events(source) * rate_multipliers.get(source.name, 1)
+            # We have to divide by the fraction in range (increasing the number of events)
+            # since we're going to call simulate, which will produce also events out of range.
+            mu = self.expected_events(source) * rate_multipliers.get(source.name, 1) / source.fraction_in_range
             if livetime_days is not None:
                 # Adjust exposure to custom livetime-days
                 mu *= livetime_days / self.config['livetime_days']
@@ -86,8 +87,7 @@ class Model(object):
             ds.append(d)
 
         d = np.concatenate(ds)
-        if restrict:
-            d = self.range_cut(d)
+        d = self.range_cut(d)
         return d
 
     def to_analysis_dimensions(self, d):
@@ -106,6 +106,7 @@ class Model(object):
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
         If no source specified, return an array of results for all sources.
+        # TODO: Why is this not a method of source?
         """
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])

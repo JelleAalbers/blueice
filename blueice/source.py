@@ -91,7 +91,7 @@ class Source(object):
         self.fraction_in_range = c['fraction_in_range']
         self.pdf_has_been_computed = False
 
-        # What is this source's id?
+        # What is this source's unique id?
         if 'hash' in c:
             # id already given in config: probably because config has already been 'pimped' with loaded objects
             self.hash = c['hash']
