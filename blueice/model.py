@@ -111,11 +111,13 @@ class Model(object):
             return np.array([self.expected_events(s) for s in self.sources])
         return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * s.config['rate_multiplier']
 
-    def show(self, d, ax=None, dims=None):
+    def show(self, d, ax=None, dims=None, **kwargs):
         """Plot the events from dataset d in the analysis range
         ax: plot on this Axes
         Dims: numbers of dimension(s) to plot in. Can be up to two dimensions.
         """
+        kwargs.setdefault('s', 5)
+
         import matplotlib.pyplot as plt
         dim_names, bins = zip(*self.config['analysis_space'])
 
@@ -132,7 +134,7 @@ class Model(object):
             q_in_space = self.to_analysis_dimensions(q)
             ax.scatter(q_in_space[dims[0]],
                        q_in_space[dims[1]] if len(dims) > 1 else np.zeros(len(q)),
-                       color=s.config['color'], s=5, label=s.config['label'])
+                       color=s.config['color'], label=s.config['label'], **kwargs)
 
         ax.set_xlabel(dim_names[dims[0]])
         ax.set_xlim(bins[dims[0]][0], bins[dims[0]][-1])

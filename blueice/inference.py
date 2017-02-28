@@ -8,6 +8,7 @@ just use whatever tools you want with either the LogLikelihood function itself, 
 Functions from this file are also made accesible as methods of LogLikelihoodBase.
 """
 import warnings
+from collections import OrderedDict
 
 import numpy as np
 from scipy import stats
@@ -146,7 +147,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
 
     optimum = optresult.x if len(names) != 1 else [optresult.x.item()]
 
-    results = {}
+    results = OrderedDict()
     for i, name in enumerate(names):
         if rates_in_log_space and name.endswith('_rate_multiplier'):
             # The minimizer was fooled into seeing the log10 of the rate, convert it back for the user
@@ -218,7 +219,7 @@ def _lnprob(x):
     return _lnprob.f(x)
 
 
-def bestfit_emcee(ll, quiet=False, return_errors=False,
+def bestfit_emcee(ll, quiet=False, return_errors=False, return_samples=False,
                   n_walkers=40, n_steps=200, n_burn_in=100, n_threads=1,
                   **kwargs):
     """Optimize the loglikelihood function ll using emcee's MCMC.
@@ -228,6 +229,7 @@ def bestfit_emcee(ll, quiet=False, return_errors=False,
     :param ll: LogLikelihood to optimize
     :param quiet: if False (default), show corner plot and print out passthrough info
     :param return_errors: if True, return a third result, dictionary with 1 sigma errors for each parameter
+    :param return_errors: if True, return a third result, flattened numpy array of samples visited (except in burn-in)
     :param n_walkers: Number of walkers to use for the MCMC
     :param n_steps: Number of steps to use for MCMC
     :param n_burn_in: Number of burn-in steps to use. These are added to n_steps but thrown away.
@@ -270,16 +272,19 @@ def bestfit_emcee(ll, quiet=False, return_errors=False,
         plt.show()
 
     fit_result = np.median(samples, axis=0)
-    fit_result_dict = {names[i]: fit_result[i] for i in range(len(names))}
+    fit_result_dict = OrderedDict([(names[i], fit_result[i]) for i in range(len(names))])
 
     best_ll = ll(**fit_result_dict)
 
     if return_errors:
         l, r = np.percentile(samples, 100 * stats.norm.cdf([-1, 1]), axis=0)
         fit_errors = (r - l)/2
-        fit_errors_dict = {names[i]: fit_errors[i] for i in range(len(names))}
+        fit_errors_dict = OrderedDict([(names[i], fit_errors[i]) for i in range(len(names))])
 
         return fit_result_dict, best_ll, fit_errors_dict
+
+    if return_samples:
+        return fit_result_dict, best_ll, samples
 
     return fit_result_dict, best_ll
 
@@ -385,7 +390,9 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
                 results[-1].append(bestfit_routine(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
-        results = results.max() - results
+        best = np.nanmax(results)
+        print(best)
+        results = best - results
         plt.pcolormesh(z1, z2, results.T, vmax=vmax, **plot_kwargs)
         plt.colorbar(label=label)
         plt.xlabel(dims[0])
@@ -394,4 +401,4 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
         raise ValueError("Can't handle %d dimensions" % len(space))
 
 
-BESTFIT_ROUTINES = dict(scipy=bestfit_scipy, minuit=bestfit_minuit)
+BESTFIT_ROUTINES = dict(scipy=bestfit_scipy, minuit=bestfit_minuit, emcee=bestfit_emcee)
