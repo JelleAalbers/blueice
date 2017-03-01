@@ -385,10 +385,6 @@ class LogLikelihoodBase(object):
         """
         raise NotImplementedError
 
-# Add the inference methods from .inference
-for methodname in inference.__all__:
-    setattr(LogLikelihoodBase, methodname, getattr(inference, methodname))
-
 
 class UnbinnedLogLikelihood(LogLikelihoodBase):
 
@@ -550,6 +546,7 @@ def beeston_barlow_root2(a, p, U, d):
 def beeston_barlow_roots(a, p, U, d):
     return beeston_barlow_root1(a, p, U, d), beeston_barlow_root2(a, p, U, d)
 
+
 class LogLikelihoodSum(object):
     """
         Class that takes a list of likelihoods to be minimized together, and 
@@ -567,8 +564,7 @@ class LogLikelihoodSum(object):
         self.pdf_base_config  ={}#might also have to be fudged
 
         self.likelihood_parameters=[]
-        
-        
+
         for ll in likelihood_list:
             self.likelihood_list.append(ll)
             self.rate_parameters.update(ll.rate_parameters)
@@ -586,7 +582,6 @@ class LogLikelihoodSum(object):
                 if base_value is not None:
                     self.pdf_base_config[shape_parameter_name] = base_value
             self.likelihood_parameters.append(parameter_names)
-                
     
     def __call__(self,livetime_days=None, **kwargs):
         ret = 0.
@@ -595,6 +590,7 @@ class LogLikelihoodSum(object):
  
             ret += ll(livetime_days=livetime_days, **pass_kwargs)
         return ret
+
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
         if parameter_name is None:
@@ -614,25 +610,54 @@ class LogLikelihoodSum(object):
             return 0, float('inf')
         else:
             raise InvalidParameter("Non-existing parameter %s" % parameter_name)
-    #def make_objective(self, guess=None, minus=True, rates_in_log_space=False, **kwargs):
-    #    return make_objective(self, guess,minus,rates_in_log_space,**kwargs)
-    
+
+    # def make_objective(self, guess=None, minus=True, rates_in_log_space=False, **kwargs):
+    #     return make_objective(self, guess,minus,rates_in_log_space,**kwargs)
+
+
 class LogAncillaryLikelihood(object):
-    def __init__(self, mu_name, sigma_value):
+    """
+        Function to add ancillary (constraint) analytical likelihoods, 
+        passed args to initialization: 
+        func - python function taking a _dict_ of (named) input values, plus func_kwargs extra arguments. 
+        parameter_list - list of names of parameters for which a dict is pulled from the config.  
+        func_kwargs - other parameters to pass to function
+        config - pdf config containing default values for parameters
+
+        returns: 
+            func({parameters:config[parameter]},**func_kwargs)
+    """
+    def __init__(self, func, parameter_list,config={},func_kwargs={}):
         self.rate_parameters = dict()
         self.shape_parameters = dict()
-        self.source_list = [] # DOES NOT EXIST IN LF!
-        #in order to pass to confidence interval
-        self.pdf_base_config  ={}#might also have to be fudged
+        self.source_list = []    # DOES NOT EXIST IN LF!
+        # in order to pass to confidence interval
+        self.pdf_base_config = config    # might also have to be fudged
 
-        self.sigma_value = sigma_value
+        self.func = func
+        self.func_kwargs = func_kwargs
+        for parameter_name in parameter_list:
+            self.shape_parameters.update(OrderedDict([(parameter_name,(None,None,None))]))
 
+    def get_bounds(self, parameter_name=None):
+        if parameter_name is None:
+            return [self.get_bounds(p) for p in self.shape_parameters]
+        if parameter_name in self.shape_parameters.keys():
+            return (-np.inf, np.inf) # other likelihoods can be more constrictive. 
+        else:
+            raise InvalidParameter("Non-existing parameter %s" % parameter_name)
 
-        self.shape_parameters.update(OrderedDict(mu_name,(None,None,None)))
+    def __call__(self,**kwargs):
+        pass_kwargs = {}
+        for parameter_name in self.shape_parameters:
+            pass_kwargs[parameter_name] = self.pdf_base_config[parameter_name]
+        pass_kwargs.update(kwargs)
+
+        return self.func(pass_kwargs, **self.func_kwargs)
 
 
 
 # Add the inference methods from .inference
 for methodname in inference.__all__:
-    setattr(LogLikelihoodSum, methodname, getattr(inference, methodname))
-   
+    for q in (LogLikelihoodBase, LogLikelihoodSum, LogAncillaryLikelihood):
+        setattr(q, methodname, getattr(inference, methodname))
