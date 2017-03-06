@@ -11,6 +11,9 @@
 
  * MonteCarloSource: + get that sample from the source's own simulate method.
    Use if you have a Monte Carlo to generate events. This was the original 'niche' for which blueice was created.
+
+Parent methods (e.g. Source.compute_pdf) are meant to be called at the end of the child methods
+that override them (e.g. HistogramPdfSource.compute_pdf).
 """
 import inspect
 import os
@@ -30,9 +33,10 @@ __all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarl
 class Source(object):
     """Base class for a source of events."""
 
+    def __repr__(self):
+        return "%s[%s]" % (self.name, self.hash if hasattr(self, 'hash') else 'nohashknown')
+
     def __init__(self, config, *args, **kwargs):
-        # Child classes should call this init LAST, before doing their own stuff. If they have to do their own stuff
-        # after init, it goes in
         defaults = dict(name='unnamed_source',
                         label='Unnamed source',
                         color='black',            # Color to use in plots
@@ -42,6 +46,7 @@ class Source(object):
                         # some child classes set them dynamically (eg DensityEstimatingSource will set them based on
                         # the sample events you pass in).
                         events_per_day=0,         # Events per day this source produces (detected or not).
+                        rate_multiplier=1,        # Rate multiplier (independent of loglikelihood's rate multiplier)
                         fraction_in_range=1,      # Fraction of simulated events that fall in analysis space.
 
                         # List of attributes you want to be stored in cache. When the same config is passed later
@@ -62,11 +67,14 @@ class Source(object):
                         # If true, never save things to the cache. Loading from cache still occurs.
                         never_save_to_cache=False,
                         cache_dir='pdf_cache',
+                        task_dir='pdf_tasks',
                         )
         c = utils.combine_dicts(defaults, config)
         c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
-        c['dont_hash_settings'] += ['force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
-                                    'label', 'color', 'extra_dont_hash_settings']
+        c['dont_hash_settings'] += ['hash', 'rate_multiplier',
+                                    'force_recalculation', 'never_save_to_cache', 'dont_hash_settings',
+                                    'label', 'color', 'extra_dont_hash_settings', 'delay_pdf_computation',
+                                    'cache_dir', 'task_dir']
 
         # Merge the 'extra' (per-source) dont hash settings into the normal dont_hash_settings
         c['dont_hash_settings'] += c['extra_dont_hash_settings']
@@ -83,9 +91,14 @@ class Source(object):
         self.fraction_in_range = c['fraction_in_range']
         self.pdf_has_been_computed = False
 
-        # Compute a hash to uniquely identify the relevant settings for this source.
-        hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
-        self.hash = utils.deterministic_hash(hash_config)
+        # What is this source's unique id?
+        if 'hash' in c:
+            # id already given in config: probably because config has already been 'pimped' with loaded objects
+            self.hash = c['hash']
+        else:
+            # Compute id from config
+            hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
+            self.hash = c['hash'] = utils.deterministic_hash(hash_config)
 
         # What filename would a source with this config have in the cache?
         if not os.path.exists(c['cache_dir']):
@@ -110,9 +123,14 @@ class Source(object):
 
         if self.from_cache:
             assert self.pdf_has_been_computed
+
         else:
-            if not self.config['delay_pdf_computation']:
+            if self.config['delay_pdf_computation']:
+                # self.config['delay_pdf_computation'] = False   # So we won't
+                self.prepare_task()
+            else:
                 self.compute_pdf()
+
 
     def compute_pdf(self):
         """Initialize, then cache the PDF. This is called
@@ -120,16 +138,22 @@ class Source(object):
          * ONLY when source is not already loaded from cache. The caching mechanism exists to store the quantities you
            need to compute here.
         """
-        if self.from_cache:
-            raise RuntimeError("compute_pdf called on a source that is loaded from cache!")
+        if self.pdf_has_been_computed:
+            raise RuntimeError("compute_pdf called twice on a source!")
         self.pdf_has_been_computed = True
         self.save_to_cache()
 
     def save_to_cache(self):
         """Save attributes in self.config['cache_attributes'] of this source to cache."""
         if not self.from_cache and not self.config['never_save_to_cache']:
-            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']}, self._cache_filename)
+            utils.save_pickle({k: getattr(self, k) for k in self.config['cache_attributes']},
+                              self._cache_filename)
         return self._cache_filename
+
+    def prepare_task(self):
+        """Create a task file in the task_dir for delayed/remote computation"""
+        task_filename = os.path.join(self.config['task_dir'], self.hash)
+        utils.save_pickle((self.__class__, self.config), task_filename)
 
     def pdf(self, *args):
         raise NotImplementedError
@@ -177,7 +201,7 @@ class HistogramPdfSource(Source):
 
     def pdf(self, *args):
         if not self.pdf_has_been_computed:
-            raise PDFNotComputedException("Attempt to call a PDF that has not been computed")
+            raise PDFNotComputedException("%s: Attempt to call a PDF that has not been computed" % self)
 
         method = self.config['pdf_interpolation_method']
 

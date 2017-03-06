@@ -12,10 +12,11 @@ import numpy as np
 from multihist import Histdd
 from scipy import stats
 from scipy.special import gammaln
+from tqdm import tqdm
 
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
-from .parallel import create_models_in_parallel
+from .parallel import create_models_ipyparallel, compute_many
 from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
@@ -101,7 +102,7 @@ class LogLikelihoodBase(object):
         self.n_model_events_interpolator = lambda x: None
         self.n_model_events = None
 
-    def prepare(self, ipp_client=None):
+    def prepare(self, n_cores=1, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
         This will compute the models for each shape parameter anchor value combination.
         """
@@ -117,11 +118,27 @@ class LogLikelihoodBase(object):
                 for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
                     # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
                     config[setting_name] = anchors[zs[i]]
+                if ipp_client is None:
+                    config['delay_pdf_computation'] = True     # Instructs source to create a task file instead
                 configs.append(config)
 
             # Create the new models
-            models = create_models_in_parallel(configs, ipp_client,
-                                               block=self.config.get('block_during_paralellization', False))
+            if ipp_client is not None:
+                models = create_models_ipyparallel(configs, ipp_client,
+                                                   block=self.config.get('block_during_paralellization', False))
+
+            else:
+                models = [Model(c) for c in tqdm(configs, desc="Preparing model computation tasks")]
+
+                hashes = set()
+                for m in models:
+                    for s in m.sources:
+                        hashes.add(s.hash)
+
+                compute_many(hashes, n_cores)
+
+                # Reload models so computation takes effect
+                models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
 
             # Add the new models to the anchor_models dict
             for zs, model in zip(zs_list, models):

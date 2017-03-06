@@ -20,6 +20,9 @@ class Model(object):
                                          'force_recalculation'])
         self.config = utils.combine_dicts(defaults, config, kwargs, deep_copy=True)
 
+        if 'rate_multiplier' in self.config:
+            raise ValueError("Don't put a setting named rate_multiplier in the model config please...")
+
         # Initialize the sources. Each gets passed the entire config (without the 'sources' field)
         # with the settings in their entry in the sources field added to it.
         self.sources = []
@@ -31,8 +34,15 @@ class Model(object):
             conf = utils.combine_dicts(self.config,
                                        source_config,
                                        exclude=['sources', 'default_source_class', 'class'])
+
+            # Special handling for the _rate_multiplier settings
+            source_name = conf.get('name', 'WHAAAAAA_YOUDIDNOTNAMEYOURSOURCETHIS')
+            conf['rate_multiplier'] = conf.get('%s_rate_multiplier' % source_name, 1)
+            conf = {k:v for k,v in conf.items() if not k.endswith('_rate_multiplier')}
+
             s = source_class(conf)
             self.sources.append(s)
+
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
 
     def get_source(self, source_id):
@@ -56,9 +66,8 @@ class Model(object):
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
         return d[mask]
 
-    def simulate(self, restrict=True, rate_multipliers=None, livetime_days=None):
+    def simulate(self, rate_multipliers=None, livetime_days=None):
         """Makes a toy dataset, poisson sampling simulated events from all sources.
-        :param restrict: if True, return only events inside the analysis range
         :param rate_multipliers: dict {source name: multiplier} to change rate of individual sources
         :param livetime_days: days of exposure to simulate (affects rate of all sources)
         """
@@ -66,14 +75,19 @@ class Model(object):
             rate_multipliers = dict()
         ds = []
         for s_i, source in enumerate(self.sources):
-            mu = source.events_per_day * rate_multipliers.get(source.name, 1)
-            mu *= livetime_days if livetime_days is not None else self.config['livetime_days']
+            # We have to divide by the fraction in range (increasing the number of events)
+            # since we're going to call simulate, which will produce also events out of range.
+            mu = self.expected_events(source) * rate_multipliers.get(source.name, 1) / source.fraction_in_range
+            if livetime_days is not None:
+                # Adjust exposure to custom livetime-days
+                mu *= livetime_days / self.config['livetime_days']
+
             d = source.simulate(np.random.poisson(mu))
             d['source'] = s_i
             ds.append(d)
+
         d = np.concatenate(ds)
-        if restrict:
-            d = self.range_cut(d)
+        d = self.range_cut(d)
         return d
 
     def to_analysis_dimensions(self, d):
@@ -92,16 +106,19 @@ class Model(object):
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
         If no source specified, return an array of results for all sources.
+        # TODO: Why is this not a method of source?
         """
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])
-        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range
+        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * s.config['rate_multiplier']
 
-    def show(self, d, ax=None, dims=None):
+    def show(self, d, ax=None, dims=None, **kwargs):
         """Plot the events from dataset d in the analysis range
         ax: plot on this Axes
         Dims: numbers of dimension(s) to plot in. Can be up to two dimensions.
         """
+        kwargs.setdefault('s', 5)
+
         import matplotlib.pyplot as plt
         dim_names, bins = zip(*self.config['analysis_space'])
 
@@ -118,7 +135,7 @@ class Model(object):
             q_in_space = self.to_analysis_dimensions(q)
             ax.scatter(q_in_space[dims[0]],
                        q_in_space[dims[1]] if len(dims) > 1 else np.zeros(len(q)),
-                       color=s.config['color'], s=5, label=s.config['label'])
+                       color=s.config['color'], label=s.config['label'], **kwargs)
 
         ax.set_xlabel(dim_names[dims[0]])
         ax.set_xlim(bins[dims[0]][0], bins[dims[0]][-1])

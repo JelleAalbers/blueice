@@ -1,6 +1,8 @@
 from copy import deepcopy
 import os
 import pickle
+import pickle as _builtin_pickle
+import dill as pickle
 from hashlib import sha1
 
 import numpy as np
@@ -67,6 +69,9 @@ def read_pickle(filename):
 
 def save_pickle(stuff, filename):
     """Saves stuff in a pickle at filename"""
+    dirname = os.path.dirname(filename)
+    if dirname != '' and not os.path.exists(dirname):
+        os.makedirs(dirname)
     with open(filename, mode='wb') as outfile:
         pickle.dump(stuff, outfile)
 
@@ -92,7 +97,7 @@ def hashablize(obj):
 
 def deterministic_hash(thing):
     """Return a deterministic hash of a container hierarchy using hashablize, pickle and sha1"""
-    return sha1(pickle.dumps(hashablize(thing))).hexdigest()
+    return sha1(_builtin_pickle.dumps(hashablize(thing))).hexdigest()
 
 
 def _events_to_analysis_dimensions(events, analysis_space):

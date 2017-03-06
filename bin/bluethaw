@@ -1,0 +1,27 @@
+#!/usr/bin/env python
+import argparse
+import os
+
+from blueice import compute_all
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', default='.',
+                        help="Directory to read source computation task files from")
+    parser.add_argument('--output', default='./pdf_cache',
+                        help="Directory to write source PDFs to")
+    parser.add_argument('--n_cpus', default=1,
+                        help="Number of CPUs to use for computation")
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.output):
+        print("Creating output directory %s" % args.output)
+        os.makedirs(args.output)
+
+    compute_all(args.input, result_dir=args.output)
+
+
+if __name__ == '__main__':
+    main()
