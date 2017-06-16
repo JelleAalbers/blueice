@@ -299,11 +299,16 @@ def _get_bestfit_routine(key):
 
 def one_parameter_interval(lf, target, bound,
                            confidence_level=0.9, kind='upper',
-                           bestfit_routine=None, **kwargs):
+                           bestfit_routine=None,
+                           t_ppf=None,
+                           **kwargs):
     """Set a confidence_level interval of kind (central, upper, lower) on the parameter target of lf.
     This assumes the likelihood ratio is asymptotically chi2(1) distributed (Wilk's theorem)
     target: parameter of lf to constrain
     bound: bound(s) for the line search. For upper and lower: single value, for central: 2-tuple.
+    t_ppf: function (hypothesis, level) -> test statistic (-2 Log[ L(test)/L(bestfit) ])
+           must return value at which test statistic reaches level'th quantile if hypothesis is true.
+           If not specified, Wilks' theorem will be used.
     kwargs: dictionary with arguments to bestfit
     """
     bestfit_routine = _get_bestfit_routine(bestfit_routine)
@@ -318,11 +323,16 @@ def one_parameter_interval(lf, target, bound,
         """(profile) likelihood ratio test statistic, with critical_value subtracted
         critical_quantile: fraction (percentile/100) of the test statistic distribution you want to find
         """
-        # "But I thought I there was a chi2 in Wilk's theorem!" Quite right, but
-        # stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2*CL - 1)
-        # So the chi2 formula is often quoted for central CI's, the normal one for bounds...
-        # This cost me hours of confusion. Please explain this to your students if you're statistics professor.
-        critical_value = stats.norm.ppf(critical_quantile) ** 2
+        if t_ppf is None:
+            # Use Wilk's theorem
+            # "But I thought I there was a chi2 in Wilk's theorem!" Quite right, but
+            # stats.norm.ppf(CL)**2 = stats.chi2(1).ppf(2*CL - 1)
+            # So the chi2 formula is often quoted for central CI's, the normal one for bounds...
+            # This cost me hours of confusion. Please explain this to your students if you're statistics professor.
+            critical_value = stats.norm.ppf(critical_quantile) ** 2
+        else:
+            # Use user-specified function
+            critical_value = t_ppf(hypothesis, critical_quantile)
 
         if kind == 'upper' and hypothesis <= global_best:
             result = 0

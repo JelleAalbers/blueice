@@ -639,15 +639,20 @@ class LogAncillaryLikelihood(object):
     """
         Function to add ancillary (constraint) analytical likelihoods, 
         passed args to initialization: 
-        func - python function taking a _dict_ of (named) input values, plus func_kwargs extra arguments. 
+        func - python function taking an _OrderedDict_ of (named) input values, plus func_kwargs extra arguments.
         parameter_list - list of names of parameters for which a dict is pulled from the config.  
         func_kwargs - other parameters to pass to function
         config - pdf config containing default values for parameters
 
         returns: 
-            func({parameters:config[parameter]},**func_kwargs)
+            func({parameters:config[parameter]}, **func_kwargs)
     """
-    def __init__(self, func, parameter_list,config={},func_kwargs={}):
+    def __init__(self, func, parameter_list, config=None, func_kwargs=None):
+        if config is None:
+            config = dict()
+        if func_kwargs is None:
+            func_kwargs = dict()
+
         self.rate_parameters = dict()
         self.shape_parameters = dict()
         self.source_list = []    # DOES NOT EXIST IN LF!
@@ -663,12 +668,12 @@ class LogAncillaryLikelihood(object):
         if parameter_name is None:
             return [self.get_bounds(p) for p in self.shape_parameters]
         if parameter_name in self.shape_parameters.keys():
-            return (-np.inf, np.inf) # other likelihoods can be more constrictive. 
+            return -np.inf, np.inf    # other likelihoods can be more constrictive.
         else:
             raise InvalidParameter("Non-existing parameter %s" % parameter_name)
 
-    def __call__(self,**kwargs):
-        pass_kwargs = {}
+    def __call__(self, **kwargs):
+        pass_kwargs = OrderedDict()   # Use an ordered dict here, so function can rely on order of arguments
         for parameter_name in self.shape_parameters:
             pass_kwargs[parameter_name] = self.pdf_base_config[parameter_name]
         pass_kwargs.update(kwargs)
