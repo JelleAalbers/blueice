@@ -602,10 +602,13 @@ class LogLikelihoodSum(object):
     
     def __call__(self,livetime_days=None, **kwargs):
         ret = 0.
-        for ll,parameter_names in zip(self.likelihood_list, self.likelihood_parameters):
+        for i,(ll,parameter_names) in enumerate(zip(self.likelihood_list, self.likelihood_parameters)):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
+            livetime = livetime_days
+            if isinstance(livetime_days, list):
+                livetime = livetime_days[i]
  
-            ret += ll(livetime_days=livetime_days, **pass_kwargs)
+            ret += ll(livetime_days=livetime, **pass_kwargs)
         return ret
 
     def get_bounds(self, parameter_name=None):
