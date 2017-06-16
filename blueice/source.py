@@ -178,6 +178,9 @@ class Source(object):
 class HistogramPdfSource(Source):
     """A source which takes its PDF values from a multihist histogram.
     """
+    _pdf_histogram = None
+    _bin_volumes = None
+    _n_events_histogram = None
 
     def __init__(self, config, *args, **kwargs):
         """Prepares the PDF of this source for use.
@@ -227,6 +230,24 @@ class HistogramPdfSource(Source):
 
         else:
             raise NotImplementedError("PDF Interpolation method %s not implemented" % method)
+
+    def simulate(self, n_events):
+        """Simulate n_events from the PDF histogram"""
+        if not self.pdf_has_been_computed:
+            raise PDFNotComputedException("%s: Attempt to simulate events from a PDF that has not been computed" % self)
+
+        events_per_bin = self._pdf_histogram * self._bin_volumes
+        q = events_per_bin.get_random(n_events)
+
+        # Convert to numpy record array
+        d = np.zeros(n_events,
+                     dtype=[('source', np.int)] +
+                           [(x[0], np.float)
+                            for x in self.config['analysis_space']])
+        for i, x in enumerate(self.config['analysis_space']):
+            d[x[0]] = q[:, i]
+
+        return d
 
     def get_pmf_grid(self):
         return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
