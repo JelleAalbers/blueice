@@ -235,7 +235,7 @@ def bestfit_emcee(ll, quiet=False, return_errors=False, return_samples=False,
     :param n_burn_in: Number of burn-in steps to use. These are added to n_steps but thrown away.
     :param n_threads: Number of concurrent threads to use
     :param kwargs: Passed to ll.make_objective.
-    :return:
+    :return: {param: best fit}, maximum loglikelihood.
     """
     import emcee
 
@@ -360,7 +360,7 @@ def one_parameter_interval(lf, target, bound,
 def plot_likelihood_ratio(lf, *space, vmax=15,
                           bestfit_routine=None,
                           plot_kwargs=None, **kwargs):
-    """Plots the loglikelihood ratio derived from LogLikelihood lf in a parameter space
+    """Plots the - loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
     :param vmax: Limit for color bar (2d) or y axis (1d)
@@ -374,7 +374,7 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
         plot_kwargs = {}
 
     results = []
-    label = "Log likelihood ratio"
+    label = "-Log likelihood ratio"
     if len(space) == 1:
         dim, x = space[0]
         for q in x:
