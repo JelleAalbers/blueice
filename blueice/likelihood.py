@@ -611,6 +611,12 @@ class LogLikelihoodSum(object):
             ret += ll(livetime_days=livetime, **pass_kwargs)
         return ret
 
+    def split_results(self, result_dict):
+        ret = []
+        for i,parameter_names in enumerate(self.likelihood_parameters):
+            ret.append({k: v for k, v in result_dict.items() if k in parameter_names})
+        return ret
+
     def get_bounds(self, parameter_name=None):
         """Return bounds on the parameter parameter_name"""
         if parameter_name is None:
