@@ -75,7 +75,11 @@ class LogLikelihoodBase(object):
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-        self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
+        self.common_pdf_cache = None
+        if self.config.get("use_common_pdf_cache",False):
+            self.common_pdf_cache = {}
+
+        self.base_model = Model(self.pdf_base_config,common_pdf_cache=self.common_pdf_cache)   # Base model: no variations of any settings
         self.source_name_list = [s.name for s in self.base_model.sources]
         self.source_allowed_negative = [s.config.get("allow_negative",False) for s in self.base_model.sources]
         self.source_apply_efficiency = np.array([s.config.get("apply_efficiency",False) for s in self.base_model.sources])
@@ -129,7 +133,7 @@ class LogLikelihoodBase(object):
                                                    block=self.config.get('block_during_paralellization', False))
 
             else:
-                models = [Model(c) for c in tqdm(configs, desc="Preparing model computation tasks")]
+                models = [Model(c,self.common_pdf_cache) for c in tqdm(configs, desc="Preparing model computation tasks")]
 
                 hashes = set()
                 for m in models:
@@ -139,7 +143,7 @@ class LogLikelihoodBase(object):
                 compute_many(hashes, n_cores)
 
                 # Reload models so computation takes effect
-                models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
+                models = [Model(c,self.common_pdf_cache) for c in tqdm(configs, desc="Loading computed models")]
 
             # Add the new models to the anchor_models dict
             for zs, model in zip(zs_list, models):
@@ -692,6 +696,8 @@ class LogAncillaryLikelihood(object):
             pass_kwargs[parameter_name] = self.pdf_base_config[parameter_name]
         pass_kwargs.update(kwargs)
 
+        #print("pass_kwargs",pass_kwargs)
+        #print("func_kwargs",self.func_kwargs)
         return self.func(pass_kwargs, **self.func_kwargs)
 
 
