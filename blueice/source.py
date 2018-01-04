@@ -33,6 +33,10 @@ __all__ = ['Source', 'HistogramPdfSource', 'DensityEstimatingSource', 'MonteCarl
 class Source(object):
     """Base class for a source of events."""
 
+    # Class-level cache for loaded sources
+    # Useful so we don't create possibly expensive objects
+    _data_cache = dict()
+
     def __repr__(self):
         return "%s[%s]" % (self.name, self.hash if hasattr(self, 'hash') else 'nohashknown')
 
@@ -50,7 +54,7 @@ class Source(object):
                         fraction_in_range=1,      # Fraction of simulated events that fall in analysis space.
 
                         # List of attributes you want to be stored in cache. When the same config is passed later
-                        # (ignoreing the dont_hash_settings), these attributes will be set from the cached file.
+                        # (ignoring the dont_hash_settings), these attributes will be set from the cached file.
                         cache_attributes=[],
 
                         # Set to True if you want to call compute_pdf at a time of your convenience, rather than
@@ -67,8 +71,7 @@ class Source(object):
                         # If true, never save things to the cache. Loading from cache still occurs.
                         never_save_to_cache=False,
                         cache_dir='pdf_cache',
-                        task_dir='pdf_tasks',
-                        )
+                        task_dir='pdf_tasks')
         c = utils.combine_dicts(defaults, config)
         c['cache_attributes'] += ['fraction_in_range', 'events_per_day', 'pdf_has_been_computed']
         c['dont_hash_settings'] += ['hash', 'rate_multiplier',
@@ -108,7 +111,15 @@ class Source(object):
         # Can we load this source from cache? If so, do so: we don't even need to load any files...
         if not c['force_recalculation'] and os.path.exists(self._cache_filename):
             self.from_cache = True
-            for k, v in utils.read_pickle(self._cache_filename).items():
+
+            if self.hash in self._data_cache:
+                # We already loaded this from cache sometime in this process
+                stuff = self._data_cache[self.hash]
+            else:
+                # Load it from disk, and store in the class-level cache
+                stuff = self._data_cache[self.hash] = utils.read_pickle(self._cache_filename)
+
+            for k, v in stuff.items():
                 if k not in c['cache_attributes']:
                     raise ValueError("%s found in cached file, but you only wanted %s from cache. "
                                      "Old cache?" % (k, c['cache_attributes']))
@@ -126,11 +137,9 @@ class Source(object):
 
         else:
             if self.config['delay_pdf_computation']:
-                # self.config['delay_pdf_computation'] = False   # So we won't
                 self.prepare_task()
             else:
                 self.compute_pdf()
-
 
     def compute_pdf(self):
         """Initialize, then cache the PDF. This is called
