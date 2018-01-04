@@ -96,7 +96,7 @@ class LogLikelihoodBase(object):
         # If there are shape parameters:
         self.anchor_models = OrderedDict()  # dictionary mapping model zs -> actual model
         # Interpolators created by morphers. These map zs to...
-        self.mu_interpolator = None                          # rates for each source
+        self.mus_interpolator = None                          # rates for each source
         self.ps_interpolator = None                          # (source, event) p-values (unbinned), or pmf grid (binned)
         # number of events per bin observed in Monte Carlo / calibration data that gave rise to the model.
         self.n_model_events_interpolator = lambda x: None
@@ -118,12 +118,16 @@ class LogLikelihoodBase(object):
                 for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
                     # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
                     config[setting_name] = anchors[zs[i]]
-                if ipp_client is None:
-                    config['delay_pdf_computation'] = True     # Instructs source to create a task file instead
+                if ipp_client is None and n_cores != 1:
+                    # We have to compute in parallel: must have delayed computation on
+                    config['delay_pdf_computation'] = True
                 configs.append(config)
 
             # Create the new models
-            if ipp_client is not None:
+            if n_cores == 1:
+                models = [Model(c) for c in tqdm(configs, desc="Computing/loading models on one core")]
+
+            elif ipp_client is not None:
                 models = create_models_ipyparallel(configs, ipp_client,
                                                    block=self.config.get('block_during_paralellization', False))
 
@@ -278,7 +282,7 @@ class LogLikelihoodBase(object):
         mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
         # Check for negative rates. Depending on the config, either error or return -float('inf') as loglikelihood
-        #If any source is allowed to be negative, check the sources one by one 
+        # If any source is allowed to be negative, check the sources one by one
         if not any(self.source_allowed_negative):
             if not np.all((mus >= 0) & (mus < float('inf'))):
                 if self.config.get('unphysical_behaviour') == 'error':
@@ -286,14 +290,14 @@ class LogLikelihoodBase(object):
                 else:
                     return -float('inf')
         else:
-            if (not any(mus < float('inf'))) or (np.sum(mus)<0):
+            if (not any(mus < float('inf'))) or (np.sum(mus) < 0):
                 if self.config.get('unphysical_behaviour') == 'error':
                     raise ValueError("Unphysical rates: %s" % str(mus))
                 else:
                     return -float('inf')
 
             for mu,allowed_negative in zip(mus,self.source_allowed_negative):
-                if not (0. <=mu) and (not allowed_negative): 
+                if not (0 <= mu) and (not allowed_negative):
                     if self.config.get('unphysical_behaviour') == 'error':
                         raise ValueError("Unphysical rates: %s" % str(mus))
                     else:
