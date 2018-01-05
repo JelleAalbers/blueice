@@ -1,7 +1,6 @@
 import numpy as np
 
 from . import utils
-from blueice.source import compute_pdf_hash
 
 __all__ = ['Model']
 
@@ -10,7 +9,7 @@ class Model(object):
     """Model for dataset simulation and analysis: collects several Sources, which do the actual work
     """
 
-    def __init__(self, config, common_pdf_cache=None, **kwargs):
+    def __init__(self, config, **kwargs):
         """
         :param config: Dictionary specifying detector parameters, source info, etc.
         :param kwargs: Overrides for the config (optional)
@@ -41,31 +40,7 @@ class Model(object):
             conf['rate_multiplier'] = conf.get('%s_rate_multiplier' % source_name, 1)
             conf = {k:v for k,v in conf.items() if not k.endswith('_rate_multiplier')}
 
-            #If there exists a common_pdf
-            if common_pdf_cache is not None:
-                s_temp = source_class(conf)
-                s_hash = s_temp.hash
-                if s_hash not in common_pdf_cache:
-                    from copy import deepcopy
-                    common_pdf_cache[s_hash] = deepcopy(s_temp)
-                del s_temp
-
-                assert s_hash == common_pdf_cache[s_hash].hash
-                #pre_conf = deepcopy(conf)
-                #s_hash = compute_pdf_hash(conf)
-                #print(s_hash)
-                #if s_hash not in common_pdf_cache:
-                #    common_pdf_cache[s_hash] = source_class(conf)
-                #    for key in conf.keys():
-                #        print(key,conf[key],pre_conf[key])
-                #    print(common_pdf_cache[s_hash])
-                #    print(common_pdf_cache[s_hash].hash)
-                #    assert s_hash == common_pdf_cache[s_hash].hash
-                s = common_pdf_cache[s_hash]
-            else:
-                s = source_class(conf)
-
-
+            s = source_class(conf)
             self.sources.append(s)
 
         del self.config['sources']  # So nobody gets the idea to modify it, which won't work after this
