@@ -102,7 +102,6 @@ class Source(object):
             # Compute id from config
             hash_config = utils.combine_dicts(c, exclude=c['dont_hash_settings'])
             self.hash = c['hash'] = utils.deterministic_hash(hash_config)
-            print("source hash_config",hash_config)
 
         # What filename would a source with this config have in the cache?
         if not os.path.exists(c['cache_dir']):
@@ -342,4 +341,3 @@ class MonteCarloSource(DensityEstimatingSource):
         for _ in range(int(n_events // batch_size)):
             result = self.simulate(n_events=batch_size)
             yield result, batch_size
-
