@@ -600,12 +600,12 @@ class LogLikelihoodSum(object):
                     self.pdf_base_config[shape_parameter_name] = base_value
             self.likelihood_parameters.append(parameter_names)
     
-    def __call__(self,livetime_days=None, **kwargs):
+    def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
         ret = 0.
         for ll,parameter_names in zip(self.likelihood_list, self.likelihood_parameters):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
  
-            ret += ll(livetime_days=livetime_days, **pass_kwargs)
+            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime_days, **pass_kwargs)
         return ret
 
     def get_bounds(self, parameter_name=None):
