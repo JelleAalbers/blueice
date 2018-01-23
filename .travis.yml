@@ -38,7 +38,8 @@ install:
   - ulimit -a -H
   - cat /proc/sys/kernel/core_pattern
   # Download numpy etc. binaries from binstar
-  - conda install --yes python=$TRAVIS_PYTHON_VERSION numpy scipy pandas
+  - conda create -n travis_env --yes python=$TRAVIS_PYTHON_VERSION numpy scipy pandas
+  - source activate travis_env
   - conda install -c astropy iminuit
   # Setup coverage for converage measurement
   - pip install coverage
