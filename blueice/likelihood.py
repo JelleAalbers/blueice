@@ -75,11 +75,13 @@ class LogLikelihoodBase(object):
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-
-        self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
+        # Base model: no variations of any settings
+        self.base_model = Model(self.pdf_base_config)
         self.source_name_list = [s.name for s in self.base_model.sources]
-        self.source_allowed_negative = [s.config.get("allow_negative",False) for s in self.base_model.sources]
-        self.source_apply_efficiency = np.array([s.config.get("apply_efficiency",False) for s in self.base_model.sources])
+        self.source_allowed_negative = [s.config.get("allow_negative",False)
+                                        for s in self.base_model.sources]
+        self.source_apply_efficiency = np.array([s.config.get("apply_efficiency", False)
+                                                 for s in self.base_model.sources])
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -281,8 +283,7 @@ class LogLikelihoodBase(object):
         
         # Apply efficiency to those sources that use it:
         if 'efficiency' in self.shape_parameters:
-            mus[self.source_apply_efficiency] *=shape_parameter_settings['efficiency']
-
+            mus[self.source_apply_efficiency] *= shape_parameter_settings['efficiency']
 
         # Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
@@ -369,8 +370,6 @@ class LogLikelihoodBase(object):
         rate_multipliers = []
         for source_i, source_name in enumerate(self.source_name_list):
             rate_multipliers.append(kwargs.get(source_name + '_rate_multiplier', 1))
-
-
 
         return rate_multipliers, shape_parameter_settings
 
@@ -615,7 +614,8 @@ class LogLikelihoodSum(object):
     
     def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
         ret = 0.
-        for i,(ll,parameter_names) in enumerate(zip(self.likelihood_list, self.likelihood_parameters)):
+        for i, (ll, parameter_names) in enumerate(zip(self.likelihood_list,
+                                                      self.likelihood_parameters)):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
             livetime = livetime_days
             if isinstance(livetime_days, list):
