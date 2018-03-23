@@ -613,7 +613,7 @@ class LogLikelihoodSum(object):
                     self.pdf_base_config[shape_parameter_name] = base_value
             self.likelihood_parameters.append(parameter_names)
     
-    def __call__(self,livetime_days=None, **kwargs):
+    def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
         ret = 0.
         for i,(ll,parameter_names) in enumerate(zip(self.likelihood_list, self.likelihood_parameters)):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
@@ -621,7 +621,7 @@ class LogLikelihoodSum(object):
             if isinstance(livetime_days, list):
                 livetime = livetime_days[i]
  
-            ret += ll(livetime_days=livetime, **pass_kwargs)
+            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime_days, **pass_kwargs)
         return ret
 
     def split_results(self, result_dict):
