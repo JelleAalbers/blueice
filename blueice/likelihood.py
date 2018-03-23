@@ -75,9 +75,13 @@ class LogLikelihoodBase(object):
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-        self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
+        # Base model: no variations of any settings
+        self.base_model = Model(self.pdf_base_config)
         self.source_name_list = [s.name for s in self.base_model.sources]
-        self.source_allowed_negative = [s.config.get("allow_negative") for s in self.base_model.sources]
+        self.source_allowed_negative = [s.config.get("allow_negative",False)
+                                        for s in self.base_model.sources]
+        self.source_apply_efficiency = np.array([s.config.get("apply_efficiency", False)
+                                                 for s in self.base_model.sources])
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -276,6 +280,10 @@ class LogLikelihoodBase(object):
         # Apply the lifetime scaling
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
+        
+        # Apply efficiency to those sources that use it:
+        if 'efficiency' in self.shape_parameters:
+            mus[self.source_apply_efficiency] *= shape_parameter_settings['efficiency']
 
         # Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
@@ -606,10 +614,20 @@ class LogLikelihoodSum(object):
     
     def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
         ret = 0.
-        for ll,parameter_names in zip(self.likelihood_list, self.likelihood_parameters):
+        for i, (ll, parameter_names) in enumerate(zip(self.likelihood_list,
+                                                      self.likelihood_parameters)):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
+            livetime = livetime_days
+            if isinstance(livetime_days, list):
+                livetime = livetime_days[i]
  
-            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime_days, **pass_kwargs)
+            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime, **pass_kwargs)
+        return ret
+
+    def split_results(self, result_dict):
+        ret = []
+        for i,parameter_names in enumerate(self.likelihood_parameters):
+            ret.append({k: v for k, v in result_dict.items() if k in parameter_names})
         return ret
 
     def get_bounds(self, parameter_name=None):
@@ -679,6 +697,8 @@ class LogAncillaryLikelihood(object):
             pass_kwargs[parameter_name] = self.pdf_base_config[parameter_name]
         pass_kwargs.update(kwargs)
 
+        #print("pass_kwargs",pass_kwargs)
+        #print("func_kwargs",self.func_kwargs)
         return self.func(pass_kwargs, **self.func_kwargs)
 
 
