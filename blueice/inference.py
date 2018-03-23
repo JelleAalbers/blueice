@@ -22,12 +22,10 @@ try:
     # Import imunuit here, so blueice works also for people who don't have it installed.
     from iminuit.util import make_func_code     # noqa
     from iminuit import Minuit                  # noqa
-    DEFAULT_BESTFIT_ROUTINE = 'minuit'
 except ImportError:
-    warnings.warn("You don't have iminuit installed; switching to scipy minimizers."
-                  "We've had several issues with these on degenerate problems, you're advised to do "
-                  "conda install -c astropy iminuit")
-    DEFAULT_BESTFIT_ROUTINE = 'scipy'
+    pass
+
+DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
 __all__ = ['best_anchor', 'make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio',
            'one_parameter_interval', 'bestfit_emcee']
