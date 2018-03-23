@@ -621,7 +621,7 @@ class LogLikelihoodSum(object):
             if isinstance(livetime_days, list):
                 livetime = livetime_days[i]
  
-            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime_days, **pass_kwargs)
+            ret += ll(compute_pdf=compute_pdf, livetime_days=livetime, **pass_kwargs)
         return ret
 
     def split_results(self, result_dict):
