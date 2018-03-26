@@ -80,6 +80,8 @@ class LogLikelihoodBase(object):
         self.source_name_list = [s.name for s in self.base_model.sources]
         self.source_allowed_negative = [s.config.get("allow_negative",False) for s in self.base_model.sources]
         self.source_apply_efficiency = np.array([s.config.get("apply_efficiency",False) for s in self.base_model.sources])
+        self.source_efficiency_names = np.array([s.config.get("efficiency_name","efficiency") for s in self.base_model.sources])
+
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -280,8 +282,14 @@ class LogLikelihoodBase(object):
             mus *= livetime_days / self.pdf_base_config['livetime_days']
         
         # Apply efficiency to those sources that use it:
-        if 'efficiency' in self.shape_parameters:
-            mus[self.source_apply_efficiency] *=shape_parameter_settings['efficiency']
+        
+        if True in self.source_apply_efficiency:
+            effs = []
+            for sae,sen in zip(self.source_apply_efficiency,self.source_efficiency_names):
+                if sae:
+                    effs.append(shape_parameter_settings.get(sen,1)) 
+                    #if that particular efficiency is not in the shape parameters, , apply 1
+            mus[self.source_apply_efficiency] *=np.array(effs)
 
 
         # Perform fits to background calibration data if needed:
