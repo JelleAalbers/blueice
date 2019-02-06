@@ -211,7 +211,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     for i, name in enumerate(names):
         minuit_dict[name] = guess[i]
         minuit_dict['limit_' + name] = bounds[i]
-        
+
     # Sets up correct magic for meaningful errors for log likelihoods
     minuit_dict['errordef'] = 0.5
 
@@ -235,9 +235,13 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     # Call migrad to do the actual minimization
     m.migrad()
 
-    # TODO return more information, such as m.errors
+    # Migrad will estimate the parabolic (symmetric) errors, we combine these
+    # with the values and output them as the fit_result dict
+    fit_result = dict(m.values)
+    for (k, v) in m.errors.items():
+        fit_result[k + '_error'] = v
 
-    return dict(m.values), -1*m.fval  # , m.errors
+    return fit_result, -1*m.fval
 
 
 # Must be defined outside bestfit_emcee to avoid pickling error
