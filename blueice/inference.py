@@ -234,7 +234,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
 
     # TODO return more information, such as m.errors
 
-    return m.values, -1*m.fval  # , m.errors
+    return dict(m.values), -1*m.fval  # , m.errors
 
 
 # Must be defined outside bestfit_emcee to avoid pickling error
