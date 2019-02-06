@@ -213,7 +213,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
         minuit_dict['limit_' + name] = bounds[i]
         
     # Sets up correct magic for meaningful errors for log likelihoods
-    minuit_dict['error_def'] = 0.5
+    minuit_dict['errordef'] = 0.5
 
     class MinuitWrap:
         """Wrapper for functions to be called by Minuit
