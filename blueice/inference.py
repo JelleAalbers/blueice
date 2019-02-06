@@ -211,6 +211,9 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     for i, name in enumerate(names):
         minuit_dict[name] = guess[i]
         minuit_dict['limit_' + name] = bounds[i]
+        
+    # Sets up correct magic for meaningful errors for log likelihoods
+    minuit_dict['error_def'] = 0.5
 
     class MinuitWrap:
         """Wrapper for functions to be called by Minuit
