@@ -156,7 +156,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
 
     if not optresult.success:
         # Try again with a more robust, but slower method
-        #if method is defined in kwargs, it must be removed 
+        #if method is defined in kwargs, it must be removed
         minimize_kwargs_temp = deepcopy(minimize_kwargs)
         minimize_kwargs_temp.pop('method',None)
         optresult = minimize(f, guess,
@@ -202,11 +202,18 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     # The full iminuit API is documented here:
     # http://iminuit.readthedocs.io/en/latest/api.html
 
-    # Make a dict for minuit with a key for each parameter and the initial guesses as values
-    # TODO add also errors, limits and fixed parameters to this dictionary
+    # Make a dict for minuit with a key for each parameter and the initial
+    # guesses as values.
+    # Add also the bounds of each parameter as 'limit_'<name> as key and a
+    # tuple of the bounds as values
+    # TODO add also errors and fixed parameters to this dictionary
     minuit_dict = minimize_kwargs
     for i, name in enumerate(names):
         minuit_dict[name] = guess[i]
+        minuit_dict['limit_' + name] = bounds[i]
+        
+    # Sets up correct magic for meaningful errors for log likelihoods
+    minuit_dict['errordef'] = 0.5
 
     class MinuitWrap:
         """Wrapper for functions to be called by Minuit
@@ -230,7 +237,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
 
     # TODO return more information, such as m.errors
 
-    return m.values, -1*m.fval  # , m.errors
+    return dict(m.values), -1*m.fval  # , m.errors
 
 
 # Must be defined outside bestfit_emcee to avoid pickling error
