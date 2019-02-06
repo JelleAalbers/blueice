@@ -592,14 +592,23 @@ class LogLikelihoodSum(object):
         Note that the pfd_base_config is a bit of a fudge; only storing guesses from the last likelihood. 
         As different guesses for different likelihoods should be a cause for concern, the safest method is to pass
         manual guesses to the minimization. 
+        the likelihood_weights allows you to weight terms in the likelihood-- useful for Asimov estimation (I think) as
+        well as if you have multiple subvolumes, in which case each subvolume constraint term gets a (1/N) weight to
+        avoid overconstraining the total llh
     """
-    def __init__(self, likelihood_list):
+    def __init__(self, likelihood_list, likelihood_weights=None):
         self.likelihood_list = []
         self.rate_parameters = dict()
         self.shape_parameters = dict()
         self.source_list = [] # DOES NOT EXIST IN LF!
         #in order to pass to confidence interval
         self.pdf_base_config  ={}#might also have to be fudged
+        self.likelihood_weights = likelihood_weights #these weights are useful  if you need to split the constraints
+        #among multiple sub-volumes in analysis space. 
+        if likelihood_weights is None:
+            self.likelihood_weights = [1 for ll in likelihood_list]
+            
+
 
         self.likelihood_parameters=[]
 
@@ -623,13 +632,14 @@ class LogLikelihoodSum(object):
     
     def __call__(self,livetime_days=None, **kwargs):
         ret = 0.
-        for i,(ll,parameter_names) in enumerate(zip(self.likelihood_list, self.likelihood_parameters)):
+        for i,(ll,parameter_names,ll_weight) in enumerate(zip(self.likelihood_list,
+                self.likelihood_parameters,self.likelihood_weights)):
             pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
             livetime = livetime_days
             if isinstance(livetime_days, list):
                 livetime = livetime_days[i]
  
-            ret += ll(livetime_days=livetime, **pass_kwargs)
+            ret += ll_weight*ll(livetime_days=livetime, **pass_kwargs)
         return ret
 
     def split_results(self, result_dict):
