@@ -61,7 +61,8 @@ class GridInterpolator(Morpher):
         # Iterate over the anchor grid points
         for anchor_grid_index, _zs in self._anchor_grid_iterator():
             # Compute f at this point, and store it in anchor_scores
-            anchor_scores[anchor_grid_index + [slice(None)] * len(extra_dims)] = f(anchor_models[tuple(_zs)])
+            anchor_scores[tuple(anchor_grid_index + [slice(None)] * len(extra_dims))] = \
+                f(anchor_models[tuple(_zs)])
 
         itp = RegularGridInterpolator(self.anchor_z_arrays, anchor_scores)
 
@@ -74,7 +75,8 @@ class GridInterpolator(Morpher):
         it = np.nditer(fake_grid, flags=['multi_index'])
         while not it.finished:
             anchor_grid_index = list(it.multi_index)
-            yield anchor_grid_index, tuple(self.anchor_z_grid[anchor_grid_index + [slice(None)]])
+            yield (anchor_grid_index,
+                   tuple(self.anchor_z_grid[tuple(anchor_grid_index + [slice(None)])]))
             it.iternext()
 
 
