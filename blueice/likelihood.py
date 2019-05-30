@@ -74,13 +74,16 @@ class LogLikelihoodBase:
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
 
-
-        self.base_model = Model(self.pdf_base_config)   # Base model: no variations of any settings
+        # Base model: no variations of any settings
+        self.base_model = Model(self.pdf_base_config)
         self.source_name_list = [s.name for s in self.base_model.sources]
-        self.source_allowed_negative = [s.config.get("allow_negative",False) for s in self.base_model.sources]
-        self.source_apply_efficiency = np.array([s.config.get("apply_efficiency",False) for s in self.base_model.sources])
-        self.source_efficiency_names = np.array([s.config.get("efficiency_name","efficiency") for s in self.base_model.sources])
 
+        self.source_allowed_negative = [s.config.get("allow_negative",False)
+                                        for s in self.base_model.sources]
+        self.source_apply_efficiency = np.array([s.config.get("apply_efficiency", False)
+                                                 for s in self.base_model.sources])
+        self.source_efficiency_names = np.array([s.config.get("efficiency_name", "efficiency")
+                                                 for s in self.base_model.sources])
 
         self.rate_parameters = OrderedDict()     # sourcename_rate -> logprior
         self.shape_parameters = OrderedDict()    # settingname -> (anchors, logprior, base_z).
@@ -281,15 +284,15 @@ class LogLikelihoodBase:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
 
         # Apply efficiency to those sources that use it:
-
         if True in self.source_apply_efficiency:
             effs = []
-            for sae,sen in zip(self.source_apply_efficiency,self.source_efficiency_names):
+            for sae, sen in zip(self.source_apply_efficiency,
+                                self.source_efficiency_names):
                 if sae:
-                    effs.append(shape_parameter_settings.get(sen,1))
-                    #if that particular efficiency is not in the shape parameters, , apply 1
-            mus[self.source_apply_efficiency] *=np.array(effs)
+                    # if that particular efficiency is not in the shape parameters, apply 1
+                    effs.append(shape_parameter_settings.get(sen, 1))
 
+            mus[self.source_apply_efficiency] *= np.array(effs)
 
         # Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
@@ -376,8 +379,6 @@ class LogLikelihoodBase:
         rate_multipliers = []
         for source_i, source_name in enumerate(self.source_name_list):
             rate_multipliers.append(kwargs.get(source_name + '_rate_multiplier', 1))
-
-
 
         return rate_multipliers, shape_parameter_settings
 
@@ -625,7 +626,7 @@ class LogLikelihoodSum(object):
                     self.pdf_base_config[shape_parameter_name] = base_value
             self.likelihood_parameters.append(parameter_names)
 
-    def __call__(self,livetime_days=None, **kwargs):
+    def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
         ret = 0.
         for i, (ll, parameter_names, ll_weight) in enumerate(
                 zip(self.likelihood_list,
@@ -637,7 +638,9 @@ class LogLikelihoodSum(object):
             livetime = livetime_days
             if isinstance(livetime_days, list):
                 livetime = livetime_days[i]
-            ret += ll_weight * ll(livetime_days=livetime, **pass_kwargs)
+            ret += ll_weight * ll(compute_pdf=compute_pdf,
+                                  livetime_days=livetime,
+                                  **pass_kwargs)
         return ret
 
     def split_results(self, result_dict):

@@ -22,12 +22,10 @@ try:
     # Import imunuit here, so blueice works also for people who don't have it installed.
     from iminuit.util import make_func_code     # noqa
     from iminuit import Minuit                  # noqa
-    DEFAULT_BESTFIT_ROUTINE = 'minuit'
 except ImportError:
-    warnings.warn("You don't have iminuit installed; switching to scipy minimizers."
-                  "We've had several issues with these on degenerate problems, you're advised to do "
-                  "conda install -c astropy iminuit")
-    DEFAULT_BESTFIT_ROUTINE = 'scipy'
+    pass
+
+DEFAULT_BESTFIT_ROUTINE = 'scipy'
 
 __all__ = ['best_anchor', 'make_objective', 'bestfit_scipy', 'bestfit_minuit', 'plot_likelihood_ratio',
            'one_parameter_interval', 'bestfit_emcee']
@@ -158,7 +156,7 @@ def bestfit_scipy(lf, minimize_kwargs=None, rates_in_log_space=False, pass_bound
 
     if not optresult.success:
         # Try again with a more robust, but slower method
-        #if method is defined in kwargs, it must be removed 
+        #if method is defined in kwargs, it must be removed
         minimize_kwargs_temp = deepcopy(minimize_kwargs)
         minimize_kwargs_temp.pop('method',None)
         optresult = minimize(f, guess,
@@ -204,11 +202,18 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     # The full iminuit API is documented here:
     # http://iminuit.readthedocs.io/en/latest/api.html
 
-    # Make a dict for minuit with a key for each parameter and the initial guesses as values
-    # TODO add also errors, limits and fixed parameters to this dictionary
+    # Make a dict for minuit with a key for each parameter and the initial
+    # guesses as values.
+    # Add also the bounds of each parameter as 'limit_'<name> as key and a
+    # tuple of the bounds as values
+    # TODO add also errors and fixed parameters to this dictionary
     minuit_dict = minimize_kwargs
     for i, name in enumerate(names):
         minuit_dict[name] = guess[i]
+        minuit_dict['limit_' + name] = bounds[i]
+
+    # Sets up correct magic for meaningful errors for log likelihoods
+    minuit_dict['errordef'] = 0.5
 
     class MinuitWrap:
         """Wrapper for functions to be called by Minuit
@@ -230,9 +235,13 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
     # Call migrad to do the actual minimization
     m.migrad()
 
-    # TODO return more information, such as m.errors
+    # Migrad will estimate the parabolic (symmetric) errors, we combine these
+    # with the values and output them as the fit_result dict
+    fit_result = dict(m.values)
+    for (k, v) in m.errors.items():
+        fit_result[k + '_error'] = v
 
-    return m.values, -1*m.fval  # , m.errors
+    return fit_result, -1*m.fval
 
 
 # Must be defined outside bestfit_emcee to avoid pickling error

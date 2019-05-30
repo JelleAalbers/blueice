@@ -7,7 +7,8 @@ blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo genera
 .. image:: https://readthedocs.org/projects/blueice/badge/?version=latest
          :target: http://blueice.readthedocs.org/en/latest/?badge=latest
          :alt: Documentation Status
-
+.. image:: https://zenodo.org/badge/65375508.svg
+   :target: https://zenodo.org/badge/latestdoi/65375508
 
 Source code: `https://github.com/JelleAalbers/blueice`
 
