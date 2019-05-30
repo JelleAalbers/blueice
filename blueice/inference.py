@@ -237,7 +237,7 @@ def bestfit_minuit(lf, minimize_kwargs=None, rates_in_log_space=False, **kwargs)
 
     # Migrad will estimate the parabolic (symmetric) errors, we combine these
     # with the values and output them as the fit_result dict
-    fit_result = dict(m.values)
+    fit_result = {k: v for k, v in m.values.items()}
     for (k, v) in m.errors.items():
         fit_result[k + '_error'] = v
 
