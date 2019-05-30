@@ -3,7 +3,6 @@
 
 """
 
-import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from functools import wraps
@@ -46,12 +45,12 @@ def _needs_data(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
         if not self.is_data_set:
-            raise NotPreparedException("%s requires you to first set the data using set_data()" % (f.__name__))
+            raise NotPreparedException("%s requires you to first set the data using set_data()" % f.__name__)
         return f(self, *args, **kwargs)
     return wrapper
 
 
-class LogLikelihoodBase(object):
+class LogLikelihoodBase:
     """Log likelihood function with several rate and/or shape parameters
 
     likelihood_config options:
@@ -280,14 +279,14 @@ class LogLikelihoodBase(object):
         # Apply the lifetime scaling
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
-        
+
         # Apply efficiency to those sources that use it:
-        
+
         if True in self.source_apply_efficiency:
             effs = []
             for sae,sen in zip(self.source_apply_efficiency,self.source_efficiency_names):
                 if sae:
-                    effs.append(shape_parameter_settings.get(sen,1)) 
+                    effs.append(shape_parameter_settings.get(sen,1))
                     #if that particular efficiency is not in the shape parameters, , apply 1
             mus[self.source_apply_efficiency] *=np.array(effs)
 
@@ -393,7 +392,7 @@ class LogLikelihoodBase(object):
 
     def add_shape_uncertainty(self, setting_name, fractional_uncertainty, anchor_zs=(-2, -1, 0, 1, 2), base_value=None):
         """Adds a shape parameter to the likelihood function, with Gaussian prior around the default value.
-        :param fractional uncertainty: Relative uncertainty on the default value.
+        :param fractional_uncertainty: Relative uncertainty on the default value.
         Other parameters as in add_shape_parameter.
         """
         # Call add_shape_parameter without a prior first, then inject the prior later.
@@ -416,6 +415,9 @@ class LogLikelihoodBase(object):
     ##
     # Methods to override
     ##
+    def _compute_likelihood(self, *args, **kwargs):
+        raise NotImplementedError
+
     def _compute_single_pdf(self, **kwargs):
         """Return likelihood arguments for a single newly computed model,
         formed using the base config, using kwargs as overrides.
@@ -448,14 +450,6 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
                                       outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
 
 
-class LogLikelihood(UnbinnedLogLikelihood):
-    """Deprecated alias for UnbinnedLogLikelihood"""
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn("Unbinned log likelihood has been renamed to UnbinnedLogLikelihood", PendingDeprecationWarning)
-        UnbinnedLogLikelihood.__init__(self, *args, **kwargs)
-
-
 class BinnedLogLikelihood(LogLikelihoodBase):
 
     def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
@@ -466,7 +460,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
     @inherit_docstring_from(LogLikelihoodBase)
     def prepare(self, *args):
-        LogLikelihood.prepare(self, *args)
+        LogLikelihoodBase.prepare(self, *args)
         self.ps, self.n_model_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
@@ -586,38 +580,39 @@ def beeston_barlow_roots(a, p, U, d):
 
 
 class LogLikelihoodSum(object):
-    """
-        Class that takes a list of likelihoods to be minimized together, and 
-        provides an interface to the inference methods and evaluation similar to likelihoods. 
-        Note that the pfd_base_config is a bit of a fudge; only storing guesses from the last likelihood. 
-        As different guesses for different likelihoods should be a cause for concern, the safest method is to pass
-        manual guesses to the minimization. 
-        the likelihood_weights allows you to weight terms in the likelihood-- useful for Asimov estimation (I think) as
-        well as if you have multiple subvolumes, in which case each subvolume constraint term gets a (1/N) weight to
-        avoid overconstraining the total llh
+    """Class that takes a list of likelihoods to be minimized together, and
+    provides an interface to the inference methods and evaluation similar to likelihoods.
+
+    Note that the pfd_base_config is a bit of a fudge; only storing guesses from the last likelihood.
+    As different guesses for different likelihoods should be a cause for concern, the safest method is to pass
+    manual guesses to the minimization.
+
+    The likelihood_weights allows you to weight terms in the likelihood-- useful for Asimov estimation (I think) as
+    well as if you have multiple subvolumes, in which case each subvolume constraint term gets a (1/N) weight to
+    avoid overconstraining the total llh
     """
     def __init__(self, likelihood_list, likelihood_weights=None):
         self.likelihood_list = []
         self.rate_parameters = dict()
         self.shape_parameters = dict()
-        self.source_list = [] # DOES NOT EXIST IN LF!
-        #in order to pass to confidence interval
-        self.pdf_base_config  ={}#might also have to be fudged
-        self.likelihood_weights = likelihood_weights #these weights are useful  if you need to split the constraints
-        #among multiple sub-volumes in analysis space. 
+        self.source_list = []       # DOES NOT EXIST IN LF!
+
+        # in order to pass to confidence interval:
+        self.pdf_base_config = {}   # might also have to be fudged
+
+        # These weights are useful  if you need to split the constraints
+        # among multiple sub-volumes in analysis space.
+        self.likelihood_weights = likelihood_weights
         if likelihood_weights is None:
-            self.likelihood_weights = [1 for ll in likelihood_list]
-            
-
-
-        self.likelihood_parameters=[]
+            self.likelihood_weights = [1 for _ in likelihood_list]
+        self.likelihood_parameters = []
 
         for ll in likelihood_list:
             self.likelihood_list.append(ll)
             self.rate_parameters.update(ll.rate_parameters)
             self.shape_parameters.update(ll.shape_parameters)
             parameter_names = []
-            
+
             for rate_parameter_name in ll.rate_parameters.keys():
                 parameter_names.append(rate_parameter_name + '_rate_multiplier')
                 base_value = ll.pdf_base_config.get(rate_parameter_name)
@@ -629,17 +624,20 @@ class LogLikelihoodSum(object):
                 if base_value is not None:
                     self.pdf_base_config[shape_parameter_name] = base_value
             self.likelihood_parameters.append(parameter_names)
-    
+
     def __call__(self,livetime_days=None, **kwargs):
         ret = 0.
-        for i,(ll,parameter_names,ll_weight) in enumerate(zip(self.likelihood_list,
-                self.likelihood_parameters,self.likelihood_weights)):
-            pass_kwargs = {k: v for k, v in kwargs.items() if k in parameter_names}
+        for i, (ll, parameter_names, ll_weight) in enumerate(
+                zip(self.likelihood_list,
+                    self.likelihood_parameters,
+                    self.likelihood_weights)):
+            pass_kwargs = {k: v
+                           for k, v in kwargs.items()
+                           if k in parameter_names}
             livetime = livetime_days
             if isinstance(livetime_days, list):
                 livetime = livetime_days[i]
- 
-            ret += ll_weight*ll(livetime_days=livetime, **pass_kwargs)
+            ret += ll_weight * ll(livetime_days=livetime, **pass_kwargs)
         return ret
 
     def split_results(self, result_dict):
@@ -649,9 +647,10 @@ class LogLikelihoodSum(object):
         return ret
 
     def get_bounds(self, parameter_name=None):
-        """Return bounds on the parameter parameter_name"""
+        """Return bounds on the parameter parameter_name,"""
         if parameter_name is None:
-            return [self.get_bounds(p) for p in self.shape_parameters]
+            return [self.get_bounds(p)
+                    for p in self.shape_parameters]
         if parameter_name in self.shape_parameters.keys():
             bounds = []
             for ll in self.likelihood_list:
@@ -660,31 +659,26 @@ class LogLikelihoodSum(object):
             bounds = np.array(bounds)
             ret= np.max(bounds[:,0]), np.min(bounds[:,1])
             if ret[1] <= ret[0]:
-                raise InvalidParameterSpecification("lower bound %s higher than upper bound!"%parameter_name)
+                raise InvalidParameterSpecification("lower bound %s higher than upper bound!" % parameter_name)
             return ret
-            
+
         elif parameter_name.endswith('_rate_multiplier'):
             return 0, float('inf')
         else:
             raise InvalidParameter("Non-existing parameter %s" % parameter_name)
 
-    # def make_objective(self, guess=None, minus=True, rates_in_log_space=False, **kwargs):
-    #     return make_objective(self, guess,minus,rates_in_log_space,**kwargs)
-
 
 class LogAncillaryLikelihood(object):
-    """
-        Function to add ancillary (constraint) analytical likelihoods, 
-        passed args to initialization: 
-        func - python function taking an _OrderedDict_ of (named) input values, plus func_kwargs extra arguments.
-        parameter_list - list of names of parameters for which a dict is pulled from the config.  
-        func_kwargs - other parameters to pass to function
-        config - pdf config containing default values for parameters
+    """Ancillary (constraint) analytical likelihoods"""
 
-        returns: 
-            func({parameters:config[parameter]}, **func_kwargs)
-    """
     def __init__(self, func, parameter_list, config=None, func_kwargs=None):
+        """
+        :param func: python function taking an _OrderedDict_ of (named) input values, plus func_kwargs extra arguments.
+           i.e. func({parameters:config[parameter]}, **func_kwargs)
+        :param parameter_list: list of names of parameters for which a dict is pulled from the config.
+        :param config: df config containing default values for parameters
+        :param func_kwargs: other parameters to pass to function
+        """
         if config is None:
             config = dict()
         if func_kwargs is None:
@@ -705,20 +699,19 @@ class LogAncillaryLikelihood(object):
         if parameter_name is None:
             return [self.get_bounds(p) for p in self.shape_parameters]
         if parameter_name in self.shape_parameters.keys():
-            return -np.inf, np.inf    # other likelihoods can be more constrictive.
+            # other likelihoods can be more constrictive.
+            return -np.inf, np.inf
         else:
             raise InvalidParameter("Non-existing parameter %s" % parameter_name)
 
     def __call__(self, **kwargs):
-        pass_kwargs = OrderedDict()   # Use an ordered dict here, so function can rely on order of arguments
+        # Use an ordered dict here, so function can rely on order of arguments
+        pass_kwargs = OrderedDict()
         for parameter_name in self.shape_parameters:
             pass_kwargs[parameter_name] = self.pdf_base_config[parameter_name]
         pass_kwargs.update(kwargs)
 
-        #print("pass_kwargs",pass_kwargs)
-        #print("func_kwargs",self.func_kwargs)
         return self.func(pass_kwargs, **self.func_kwargs)
-
 
 
 # Add the inference methods from .inference
