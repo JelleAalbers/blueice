@@ -69,3 +69,6 @@ target/
 # Pycharm
 .idea
 /.project
+
+#mac: 
+*.DS_store*
