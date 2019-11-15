@@ -242,7 +242,7 @@ def _lnprob(x):
     return _lnprob.f(x)
 
 
-def bestfit_emcee(ll, quiet=False, return_errors=False, return_samples=False,
+def bestfit_emcee(ll, quiet=False, return_errors=False, return_samples=False,return_sampler=False,
                   n_walkers=40, n_steps=200, n_burn_in=100, n_threads=1,
                   **kwargs):
     """Optimize the loglikelihood function ll using emcee's MCMC.
@@ -308,6 +308,8 @@ def bestfit_emcee(ll, quiet=False, return_errors=False, return_samples=False,
 
     if return_samples:
         return fit_result_dict, best_ll, samples
+    if return_sampler:
+        return fit_result_dict, best_ll, samples, sampler
 
     return fit_result_dict, best_ll
 
