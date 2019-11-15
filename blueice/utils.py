@@ -4,6 +4,7 @@ import pickle
 import pickle as _builtin_pickle
 import dill as pickle
 from hashlib import sha1
+from atomicwrites import atomic_write 
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -72,8 +73,10 @@ def save_pickle(stuff, filename):
     dirname = os.path.dirname(filename)
     if dirname != '' and not os.path.exists(dirname):
         os.makedirs(dirname)
-    with open(filename, mode='wb') as outfile:
+    #with open(filename, mode='wb') as outfile:
+    with atomic_write(filename, mode="wb", overwrite=True) as outfile:
         pickle.dump(stuff, outfile)
+
 
 
 def hashablize(obj):
