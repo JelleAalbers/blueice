@@ -20,6 +20,7 @@ from .parallel import create_models_ipyparallel, compute_many
 from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
+from .source_collection import SourceCollection
 
 __all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum']
 
@@ -74,6 +75,7 @@ class LogLikelihoodBase(object):
             likelihood_config = {}
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
+        self.model_statistical_uncertainty_handling = likelihood_config.get("model_statistical_uncertainty_handling",False)
 
         # Base model: no variations of any settings
         self.base_model = Model(self.pdf_base_config)
@@ -110,52 +112,7 @@ class LogLikelihoodBase(object):
         """Prepares a likelihood function with shape parameters for use.
         This will compute the models for each shape parameter anchor value combination.
         """
-        if len(self.shape_parameters):
-            self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
-                                                            self.shape_parameters)
-            zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
-
-            # Create the configs for each new model
-            configs = []
-            for zs in zs_list:
-                config = deepcopy(self.pdf_base_config)
-                for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
-                    # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
-                    config[setting_name] = anchors[zs[i]]
-                if ipp_client is None and n_cores != 1:
-                    # We have to compute in parallel: must have delayed computation on
-                    config['delay_pdf_computation'] = True
-                configs.append(config)
-
-            # Create the new models
-            if n_cores == 1:
-                models = [Model(c) for c in tqdm(configs, desc="Computing/loading models on one core")]
-
-            elif ipp_client is not None:
-                models = create_models_ipyparallel(configs, ipp_client,
-                                                   block=self.config.get('block_during_paralellization', False))
-
-            else:
-                models = [Model(c) for c in tqdm(configs, desc="Preparing model computation tasks")]
-
-                hashes = set()
-                for m in models:
-                    for s in m.sources:
-                        hashes.add(s.hash)
-
-                compute_many(hashes, n_cores)
-
-                # Reload models so computation takes effect
-                models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
-
-            # Add the new models to the anchor_models dict
-            for zs, model in zip(zs_list, models):
-                self.anchor_models[tuple(zs)] = model
-
-            # Build the interpolator for the rates of each source.
-            self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
-                                                                   extra_dims=[len(self.source_name_list)],
-                                                                   anchor_models=self.anchor_models)
+        self.source_collections = [SourceCollection(self,i) for i in range(len(self.source_name_list))]
 
         self.is_data_set = False
         self.is_prepared = True
@@ -167,6 +124,9 @@ class LogLikelihoodBase(object):
         For example, if your models are on 's1' and 's2', d must be something for which d['s1'] and d['s2'] give
         the s1 and s2 values of your events as numpy arrays.
         """
+
+        for i,sc in enumerate(self.source_collections):
+            sc.set_data(d)
         self._data = d
         self.is_data_set = True
 
@@ -232,67 +192,41 @@ class LogLikelihoodBase(object):
         :param compute_pdf: compute new PDFs instead of interpolating the PDF at the requested parameters.
         """
         result = 0
+        mus = []
+        ps = []
+        #check for out-of-bounds and apply constraints:
         rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
-
-        if len(self.shape_parameters):
-            if compute_pdf:
-                if self._has_non_numeric:
-                    raise NotImplementedError("compute_pdf only works for numerical values")
-
-                mus, ps, n_model_events = self._compute_single_pdf(**kwargs)
-
-            else:
-                # We can use the interpolators. They require the settings to come in order:
-                zs = []
-                for setting_name, (_, log_prior, _) in self.shape_parameters.items():
-                    z = shape_parameter_settings[setting_name]
-                    zs.append(z)
-
-                    # Test if the z value is out of range; if so, return -inf (since we can't extrapolate)
-                    minbound, maxbound = self.get_bounds(setting_name)
-                    if not minbound <= z <= maxbound:
-                        return -float('inf')
-
-                    if log_prior is not None:
-                        result += log_prior(z)
-
-                # The RegularGridInterpolators want numpy arrays: give it to them...
-                zs = np.asarray(zs)
-
-                mus = self.mus_interpolator(zs)
-                ps = self.ps_interpolator(zs)
-                n_model_events = self.n_model_events_interpolator(zs)
-
-        else:
-            # No shape parameters
-            mus = self.base_model.expected_events()
-            ps = self.ps
-            n_model_events = self.n_model_events
-
-        # Apply the rate multipliers
-        for source_i, source_name in enumerate(self.source_name_list):
-            mult = rate_multipliers[source_i]
-            mus[source_i] *= mult
-            log_prior = self.rate_parameters.get(source_name, None)
+        for setting_name, (_, log_prior, _) in self.shape_parameters.items():
+            z = shape_parameter_settings[setting_name]
+            # Test if the z value is out of range; if so, return infty
+            minbound, maxbound = self.get_bounds(setting_name)
+            if not minbound <= z <= maxbound:
+                return -1*float("inf")
             if log_prior is not None:
                 result += log_prior(mult)
-
+        for source_index, source_collection in enumerate(self.source_collections):
+            mu, p = source_collection.evaluate(livetime_days = None, compute_pdf = False, **kwargs)
+            mus.append(mu)
+            ps.append(p)
+            log_prior = self.rate_parameters.get(self.source_name_list[source_index], None)
+            if log_prior is not None:
+                result += log_prior(mult)
+        mus = np.array(mus)
+        ps = np.vstack(ps)
+        
         # Apply the lifetime scaling
         if livetime_days is not None:
             mus *= livetime_days / self.pdf_base_config['livetime_days']
         
-        # Apply efficiency to those sources that use it:
-        if 'efficiency' in self.shape_parameters:
-            mus[self.source_apply_efficiency] *= shape_parameter_settings['efficiency']
-
-        # Perform fits to background calibration data if needed:
+        #Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
-        mus, ps = self.adjust_expectations(mus, ps, n_model_events)
+        if self.model_statistical_uncertainty_handling:
+            mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
         # Check for negative rates. Depending on the config, either error or return -float('inf') as loglikelihood
         # If any source is allowed to be negative, check the sources one by one
         if not any(self.source_allowed_negative):
-            if not np.all((mus >= 0) & (mus < float('inf'))):
+            if not np.all((mus >= 0.) & (mus < float('inf'))):
                 if self.config.get('unphysical_behaviour') == 'error':
                     raise ValueError("Unphysical rates: %s" % str(mus))
                 else:
@@ -420,12 +354,6 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
     @inherit_docstring_from(LogLikelihoodBase)
     def set_data(self, d):
         LogLikelihoodBase.set_data(self, d)
-        if len(self.shape_parameters):
-            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
-                                                                  extra_dims=[len(self.source_name_list), len(d)],
-                                                                  anchor_models=self.anchor_models)
-        else:
-            self.ps = self.base_model.score_events(d)
 
     @inherit_docstring_from(LogLikelihoodBase)
     def _compute_single_pdf(self, **kwargs):
