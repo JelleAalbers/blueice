@@ -54,7 +54,7 @@ class SourceCollection(object):
         self.sname = ll.pdf_base_config["sources"][source_index].get("name","NAME IS MISSING")
         self.efficiency_name = ll.pdf_base_config["sources"][source_index].get("efficiency_name","")
         #Import shape parameters, only the ones we use:
-        ignore_parameters = ll.pdf_base_config["sources"][source_index]["ignore_parameters"]
+        ignore_parameters = ll.pdf_base_config["sources"][source_index].get("ignore_parameters",[])
         self.shape_parameter_names = [spn for spn in ll.shape_parameters.keys() if spn not in ignore_parameters]
         self.shape_parameters = OrderedDict()
         for spn in self.shape_parameter_names:

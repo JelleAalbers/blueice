@@ -81,7 +81,7 @@ class Source(object):
 
         # Merge the 'extra' (per-source) dont hash settings into the normal dont_hash_settings
         c['dont_hash_settings'] += c['extra_dont_hash_settings']
-        c['dont_hash_settings'] += c['ignore_parameters']
+        c['dont_hash_settings'] += c.get('ignore_parameters',[])
         del c['extra_dont_hash_settings']
 
         self.name = c['name']
