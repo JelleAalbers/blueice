@@ -69,3 +69,6 @@ target/
 # Pycharm
 .idea
 /.project
+
+# Mac cache: 
+*.DS_Store
