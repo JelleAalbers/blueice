@@ -345,8 +345,12 @@ class LogLikelihoodBase(object):
         """
             fcn that returns a simulated dataset. If snap_parameters, the source closest to the provided parameter is used, otherwise, exact anchor model parameters must be used. 
         """
-        rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
-        
+        datas = []
+        for i,source_collection in enumerate(self.source_collections):
+            rd = source_collection.simulate(snap_parameters=snap_parameters,livetime_days=livetime_days, **kwargs)
+            rd["source"] = i
+            datas.append(rd)
+        return np.concatenate(datas)
 
     ##
     # Methods to override
