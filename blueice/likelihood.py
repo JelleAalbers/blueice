@@ -267,20 +267,23 @@ class LogLikelihoodBase(object):
         """
         return mus, ps
 
-    def _kwargs_to_settings(self, **kwargs):
+    def _kwargs_to_settings(self, prune_input = False, **kwargs):
         """Return shape parameters, rate_multipliers from kwargs.
           shape_parmeters is a dict mapping setting name -> value | representative number
           rate_multipliers is a list of rate multipliers for each source in self.source_name_list
         """
         # Validate the kwargs: must be either shape parameters, or <known_source>_rate_multiplier
-        for k in kwargs.keys():
+        for k in list(kwargs.keys()):
             if k in self.shape_parameters:
                 continue
             if k.endswith('_rate_multiplier'):
                 s_name = k[:-16]
                 if s_name in self.source_name_list:
                     continue
-            raise InvalidParameter("%s is not a known shape or rate parameter!" % k)
+            if prune_input:
+                kwargs.pop(k,None)
+            else:
+                raise InvalidParameter("%s is not a known shape or rate parameter!" % k)
 
         shape_parameter_settings = dict()
         for setting_name, (_, _, base_value) in self.shape_parameters.items():
@@ -337,6 +340,13 @@ class LogLikelihoodBase(object):
 
         config['never_save_to_cache'] = True
         return Model(config, **shape_parameter_settings)
+
+    def simulate(self,snap_parameters=True,livetime_days=None,**kwargs):
+        """
+            fcn that returns a simulated dataset. If snap_parameters, the source closest to the provided parameter is used, otherwise, exact anchor model parameters must be used. 
+        """
+        rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
+        
 
     ##
     # Methods to override
