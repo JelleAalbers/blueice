@@ -2,6 +2,7 @@ import numpy as np
 from collections import OrderedDict
 from copy import deepcopy
 from tqdm import tqdm
+from scipy.stats import poisson
 
 from . import utils
 from .pdf_morphers import MORPHERS
@@ -95,6 +96,44 @@ class SourceCollection(object):
         if len(self.shape_parameters):
             self.ps_interpolator = self.morpher.make_interpolator(f=pif,extra_dims=[1,len(d)],anchor_models=self.anchor_models )
         else: self.ps = pif(self.ll.base_model.sources[self.source_index])
+    
+    
+    
+    def evaluate_mu(self,livetime_days = None,compute_pdf = False,**kwargs):
+        rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
+        rate_multiplier = rate_multipliers[self.source_index]
+        ret = 0.
+        if len(self.shape_parameters):
+            if compute_pdf:
+                if self._has_non_numeric:
+                    raise NotImplementedError("compute_pdf only works for numerical values")
+
+                mus, ps, n_model_events = self._compute_single_pdf(**kwargs)
+
+            else:
+                # We can use the interpolators. They require the settings to come in order:
+                zs = []
+                for setting_name, (_, log_prior, _) in self.shape_parameters.items():
+                    z = shape_parameter_settings[setting_name]
+                    zs.append(z)
+
+                    # Test if the z value is out of range; if so, return 0
+                    minbound, maxbound = self.ll.get_bounds(setting_name)
+                    if not minbound <= z <= maxbound:
+                        return 0.,None
+                # The RegularGridInterpolators want numpy arrays: give it to them...
+                zs = np.asarray(zs)
+                mu = self.mus_interpolator(zs)[0]
+        else:
+            # No shape parameters
+            mu = self.mu
+        #rate multiplier + efficiency: 
+        mu *= rate_multiplier
+        if self.apply_efficiency:
+            mu *= shape_parameter_settings.get(self.efficiency_name,1.)
+        if livetime_days is not None:
+            mu *= livetime_days / self.ll.pdf_base_config.get("livetime_days",1)
+        return mu
 
     def evaluate(self,livetime_days = None,compute_pdf = False,**kwargs):
         rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(**kwargs)
@@ -117,7 +156,7 @@ class SourceCollection(object):
                     # Test if the z value is out of range; if so, return 0
                     minbound, maxbound = self.ll.get_bounds(setting_name)
                     if not minbound <= z <= maxbound:
-                        return 0.
+                        return 0.,None
                 # The RegularGridInterpolators want numpy arrays: give it to them...
                 zs = np.asarray(zs)
                 mu = self.mus_interpolator(zs)[0]
@@ -130,5 +169,37 @@ class SourceCollection(object):
         mu *= rate_multiplier
         if self.apply_efficiency:
             mu *= shape_parameter_settings.get(self.efficiency_name,1.)
+        if livetime_days is not None:
+            mu *= livetime_days / self.ll.pdf_base_config.get("livetime_days",1)
         return mu,ps
+
+    def get_closest_source(self,snap_parameters = True,**kwargs):
+        """
+            function that finds closest approach:  
+        """
+        if len(self.shape_parameters):
+            rate_multipliers, shape_parameter_settings = self._kwargs_to_settings(prune_input=True,**kwargs)
+            zs = []
+            for setting_name in self.shape_parameters.keys():
+                z = shape_parameter_settings[setting_name]
+                zs.append(z)
+            diffdir = {}
+            for k in self.anchor_models:
+                diff = np.sum((np.array(zs)-np.array(k))**2)
+                diffdir[diff]=k
+            call_args_closest = diffdir[min(diffdir.keys())]
+            if not snap_parameters:
+                assert min(diffdir.keys())<=1e-9
+            return self.anchor_models[call_args_closest]
+        else:
+            return self.ll.base_model.sources[self.source_index]
+    
+    def simulate(self, snap_parameters=True,livetime_days = None,compute_pdf = False,**kwargs):
+        #print(self.evaluate(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs))
+
+        mus = self.evaluate_mu(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs)
+        n_simulate = poisson(mus).rvs()
+        closest_source = self.get_closest_source(snap_parameters=snap_parameters,**kwargs)
+        return closest_source.simulate(n_simulate)
+        
 
