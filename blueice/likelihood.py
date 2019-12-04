@@ -506,11 +506,12 @@ class BinnedLogLikelihood(LogLikelihoodBase):
                     _x *= 0.
             u_bins = np.sum(counts_per_bin, axis=0)
 
-            p_calibration = mus[source_i] / n_model_events[source_i].sum()
-
             a_bins = n_model_events[source_i]
 
-            A_bins_1, A_bins_2 = beeston_barlow_roots(a_bins, p_calibration, u_bins, self.data_events_per_bin.histogram)
+            p_calibration = mus[source_i] / n_model_events[source_i].sum()
+            w_calibration = self.base_model.get_source(source_i)._pdf_histogram.histogram / a_bins * n_model_events[source_i].sum()
+
+            A_bins_1, A_bins_2 = beeston_barlow_roots(a_bins, w_calibration * p_calibration, u_bins, self.data_events_per_bin.histogram)
             assert np.all(A_bins_1 <= 0)  # it seems(?) the 1st root is always negative
 
             # For U=0, the solution above is singular; we need to use a special case instead
@@ -518,8 +519,9 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             A_bins = np.choose(u_bins == 0, [A_bins_2, A_bins_special])
 
             assert np.all(0 <= A_bins)
-            pmfs[source_i] = A_bins / A_bins.sum()
-            mus[source_i] = A_bins.sum() * p_calibration
+            pmfs[source_i] = A_bins * w_calibration
+            pmfs[source_i] /= pmfs[source_i].sum()
+            mus[source_i] = (A_bins * w_calibration).sum() * p_calibration
 
         return mus, pmfs
 
