@@ -158,7 +158,7 @@ class SourceCollection(object):
             return self.ll.base_model.sources[self.source_index]
     
     def simulate(self, snap_parameters=True,livetime_days = None,compute_pdf = False,**kwargs):
-        print(self.evaluate(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs))
+        #print(self.evaluate(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs))
 
         mus,_ = self.evaluate(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs)
         n_simulate = poisson(mus).rvs()
