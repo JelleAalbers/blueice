@@ -209,6 +209,7 @@ class LogLikelihoodBase(object):
             mus.append(mu)
             ps.append(p)
             log_prior = self.rate_parameters.get(self.source_name_list[source_index], None)
+            mult = rate_multipliers[source_index]
             if log_prior is not None:
                 result += log_prior(mult)
         mus = np.array(mus)
