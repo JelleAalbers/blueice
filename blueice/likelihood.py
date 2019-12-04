@@ -285,10 +285,6 @@ class LogLikelihoodBase(object):
         if 'efficiency' in self.shape_parameters:
             mus[self.source_apply_efficiency] *= shape_parameter_settings['efficiency']
 
-        # Perform fits to background calibration data if needed:
-        # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
-        mus, ps = self.adjust_expectations(mus, ps, n_model_events)
-
         # Check for negative rates. Depending on the config, either error or return -float('inf') as loglikelihood
         # If any source is allowed to be negative, check the sources one by one
         if not any(self.source_allowed_negative):
@@ -310,6 +306,10 @@ class LogLikelihoodBase(object):
                         raise ValueError("Unphysical rates: %s" % str(mus))
                     else:
                         return -float('inf')
+
+        # Perform fits to background calibration data if needed:
+        # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method
+        mus, ps = self.adjust_expectations(mus, ps, n_model_events)
 
         # Get the loglikelihood. At last!
         result += self._compute_likelihood(mus, ps)
