@@ -205,7 +205,7 @@ class LogLikelihoodBase(object):
             if log_prior is not None:
                 result += log_prior(mult)
         for source_index, source_collection in enumerate(self.source_collections):
-            mu, p = source_collection.evaluate(livetime_days = None, compute_pdf = False, **kwargs)
+            mu, p = source_collection.evaluate(livetime_days = livetime_days, compute_pdf = compute_pdf, **kwargs)
             mus.append(mu)
             ps.append(p)
             log_prior = self.rate_parameters.get(self.source_name_list[source_index], None)
@@ -215,9 +215,10 @@ class LogLikelihoodBase(object):
         mus = np.array(mus)
         ps = np.vstack(ps)
         
-        # Apply the lifetime scaling
-        if livetime_days is not None:
-            mus *= livetime_days / self.pdf_base_config['livetime_days']
+        ## Apply the lifetime scaling
+        #if livetime_days is not None:
+        #    print("livetime_days not None",livetime_days)
+        #    mus *= livetime_days / self.pdf_base_config['livetime_days']
         
         #Perform fits to background calibration data if needed:
         # Currently only performed (analytically) for Binned likelihood via the Beeston-Barlow method

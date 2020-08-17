@@ -132,7 +132,9 @@ class SourceCollection(object):
         if self.apply_efficiency:
             mu *= shape_parameter_settings.get(self.efficiency_name,1.)
         if livetime_days is not None:
-            mu *= livetime_days / self.ll.pdf_base_config.get("livetime_days",1)
+            mu *= livetime_days #/ self.ll.pdf_base_config.get("livetime_days",1)
+        else:
+            mu *=  self.ll.pdf_base_config.get("livetime_days",1)
         return mu
 
     def evaluate(self,livetime_days = None,compute_pdf = False,**kwargs):
@@ -170,7 +172,9 @@ class SourceCollection(object):
         if self.apply_efficiency:
             mu *= shape_parameter_settings.get(self.efficiency_name,1.)
         if livetime_days is not None:
-            mu *= livetime_days / self.ll.pdf_base_config.get("livetime_days",1)
+            mu *= livetime_days #/ self.ll.pdf_base_config.get("livetime_days",1)
+        else:
+            mu *=  self.ll.pdf_base_config.get("livetime_days",1)
         return mu,ps
 
     def get_closest_source(self,snap_parameters = True,**kwargs):
@@ -195,7 +199,6 @@ class SourceCollection(object):
             return self.ll.base_model.sources[self.source_index]
     
     def simulate(self, snap_parameters=True,livetime_days = None,compute_pdf = False,**kwargs):
-        #print(self.evaluate(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs))
 
         mus = self.evaluate_mu(livetime_days =livetime_days,compute_pdf = compute_pdf,**kwargs)
         n_simulate = poisson(mus).rvs()
