@@ -203,7 +203,7 @@ class LogLikelihoodBase(object):
             if not minbound <= z <= maxbound:
                 return -1*float("inf")
             if log_prior is not None:
-                result += log_prior(mult)
+                result += log_prior(z)
         for source_index, source_collection in enumerate(self.source_collections):
             mu, p = source_collection.evaluate(livetime_days = livetime_days, compute_pdf = compute_pdf, **kwargs)
             mus.append(mu)
