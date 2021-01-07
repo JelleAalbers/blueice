@@ -4,7 +4,7 @@ python:
   - "3.6"
 install:
   - pip install -r requirements.txt
-  - pip install iminuit
+  - pip install iminuit==1.5.4   # Iminuit 2 introduced breaking changes
   - pip install coveralls
   - python setup.py install
 script:
