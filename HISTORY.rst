@@ -1,4 +1,16 @@
 ------------------
+1.1.0 (2021/01/07)
+------------------
+* Likelihood sum wrapper (#17)
+* emcee bestfit and multicore precomputation (#18)
+* LogAncillaryLikelihood for constraint terms (#19)
+* Efficiency shape parameter, LogLikelihoodSum enhancements (#23)
+* Use scipy as default optimizer (#24)
+* Minuit support for bounds and errors (#26, #27)
+* Per-source efficiencies, weighted LogLikelihoodSum (#28)
+* Use atomicwrites for cache to prevent race conditions (#30)
+
+------------------
 1.0.0 (2016/10/01)
 ------------------
 * Binned likelihoods (#7)
