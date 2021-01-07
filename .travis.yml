@@ -1,7 +1,7 @@
 language: python
 python:
-  - "3.4"
   - "3.6"
+  - "3.8"
 install:
   - pip install -r requirements.txt
   - pip install iminuit==1.5.4   # Iminuit 2 introduced breaking changes

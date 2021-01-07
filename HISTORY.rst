@@ -4,6 +4,7 @@
 * Likelihood sum wrapper (#17)
 * emcee bestfit and multicore precomputation (#18)
 * LogAncillaryLikelihood for constraint terms (#19)
+* HistogramPDFSource simulation, order shape parameter dict (#20)
 * Efficiency shape parameter, LogLikelihoodSum enhancements (#23)
 * Use scipy as default optimizer (#24)
 * Minuit support for bounds and errors (#26, #27)
