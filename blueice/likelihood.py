@@ -492,6 +492,10 @@ class BinnedLogLikelihood(LogLikelihoodBase):
     @_needs_data
     @inherit_docstring_from(LogLikelihoodBase)
     def adjust_expectations(self, mus, pmfs, n_model_events):
+        # Avoid mutating the arrays we're also going to return
+        mus = mus.copy()
+        pmfs = pmfs.copy()
+
         if self.model_statistical_uncertainty_handling == 'bb_single':
 
             source_i = self.config.get('bb_single_source')
@@ -513,7 +517,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             a_bins = n_model_events[source_i]
 
             p_calibration = mus[source_i] / n_model_events[source_i].sum()
-            w_calibration = self.base_model.get_source(source_i)._pdf_histogram.histogram / a_bins * n_model_events[source_i].sum()
+            w_calibration = pmfs[source_i] / a_bins * n_model_events[source_i].sum()
 
             A_bins_1, A_bins_2 = beeston_barlow_roots(a_bins, w_calibration * p_calibration, u_bins, self.data_events_per_bin.histogram)
             assert np.all(A_bins_1 <= 0)  # it seems(?) the 1st root is always negative
