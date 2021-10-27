@@ -20,7 +20,8 @@ from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
 
-__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum']
+__all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum',
+           'LogLikelihoodVaried']
 
 
 ##
@@ -451,83 +452,6 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
                                       outlier_likelihood=self.config.get('outlier_likelihood', 1e-12))
 
 
-class UnbinnedLogLikelihoodVaried(UnbinnedLogLikelihood):
-    """Class that enables source dependent on several couplings."""
-
-    def __init__(self, pdf_base_config, conv_config, likelihood_config=None, **kwargs):
-        super().__init__(pdf_base_config, likelihood_config=likelihood_config, **kwargs)
-        self.coupling_parameters = OrderedDict()
-        self.conv_config = conv_config
-        self.alt_model = Model(self.pdf_base_config)
-        # FIXME: a better way to refine simulate?
-        self.base_model.simulate = self._simulate
-
-    def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
-        kwargs = deepcopy(self._parameter_converter(**kwargs))
-        ret = super().__call__(compute_pdf=compute_pdf,
-                               livetime_days=livetime_days,
-                               **kwargs)
-        return ret
-
-    def _simulate(self, kwargs=None, livetime_days=None):
-        """simulate function including coupling parameters and rate parameters"""
-        if kwargs is None:
-            kwargs = dict()
-
-        kwargs = deepcopy(self._parameter_converter(with_suffix=False, **kwargs))
-
-        rate_multipliers = dict()
-        for k, v in kwargs.items():
-            if k not in self.shape_parameters.keys():
-                rate_multipliers[k] = v
-
-        return self.alt_model.simulate(rate_multipliers=rate_multipliers, livetime_days=livetime_days)
-
-    def _parameter_converter(self, with_suffix=True, **kwargs):
-        """
-        convert one parameter to another while keeping the rest.
-        :param conv_config: dict about how we do the conversion, in the form of:
-        dict(paramter_final_1=dict(params=[p_origin_1, p_origin_2, ...], func)
-        :param kwargs: kwargs to be converted
-        :return: converted kwargs
-        """
-        if not with_suffix:
-            kwargs_copy = dict()
-            for k, v in kwargs.items():
-                if k in self.rate_parameters.keys():
-                    kwargs_copy[k + "_rate_multiplier"] = v
-                else:
-                    kwargs_copy[k] = v
-
-            kwargs = deepcopy(kwargs_copy)
-
-        pass_kwargs = OrderedDict()
-
-        for k, v in self.conv_config.items():
-            # shape param -> rate param
-            if k.endswith("_rate_multiplier"):
-                _params = [kwargs.get(_k, 1) for _k in v["params"]]
-                pass_kwargs[k] = v["func"](*_params)
-            # rate param -> shape param
-            else:
-                raise NotImplementedError
-
-        # retain the rest
-        for k, v in kwargs.items():
-            pass_kwargs[k] = v
-
-        # remove suffix if without suffix
-        if not with_suffix:
-            pass_kwargs_copy = dict()
-            for k, v in pass_kwargs.items():
-                _name = k.split("_rate_multiplier")[0]
-                pass_kwargs_copy[_name] = v
-
-            pass_kwargs = deepcopy(pass_kwargs_copy)
-
-        return pass_kwargs
-
-
 class BinnedLogLikelihood(LogLikelihoodBase):
 
     def __init__(self, pdf_base_config, likelihood_config=None, **kwargs):
@@ -655,6 +579,127 @@ def beeston_barlow_root2(a, p, U, d):
 
 def beeston_barlow_roots(a, p, U, d):
     return beeston_barlow_root1(a, p, U, d), beeston_barlow_root2(a, p, U, d)
+
+
+class LogLikelihoodVaried(object):
+    """Class that enables source dependent on several couplings."""
+
+    def __init__(self, likelihood, conv_config):
+        self.__likelihood = likelihood
+        # self.coupling_parameters = OrderedDict()
+        self.conv_config = conv_config
+        self.pdf_base_config = self.__likelihood.pdf_base_config
+
+    def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
+        kwargs = deepcopy(self._parameter_converter(**kwargs))
+        ret = self.__likelihood(compute_pdf=compute_pdf,
+                               livetime_days=livetime_days,
+                               **kwargs)
+        return ret
+
+    @property
+    def rate_parameters(self):
+        """remove rate multipliers in the original likelihood that are converted from shape parameters"""
+        rate_parameters = deepcopy(self.__likelihood.rate_parameters)
+        for k in self.__likelihood.rate_parameters.keys():
+            if k+"_rate_multiplier" in self.conv_config.keys():
+                rate_parameters.pop(k)
+
+        return rate_parameters
+
+    @property
+    def shape_parameters(self):
+        """add extra shape parameters from the conv_config"""
+        shape_parameters = deepcopy(self.__likelihood.shape_parameters)
+        for k, v in self.conv_config.items():
+            if not k.endswith("_rate_multiplier"):
+                anchors = {z: z for z in v[0]}
+                shape_parameters[k] = (anchors, v[1], v[2])
+
+        return shape_parameters
+
+    @property
+    def base_model(self):
+        model = deepcopy(self.__likelihood.base_model)
+        model.simulate = self._simulate
+        return model
+
+    def set_data(self, df):
+        self.__likelihood.set_data(df)
+
+    def get_bounds(self, parameter_name=None):
+        """Return bounds on the parameter parameter_name"""
+        if parameter_name is None:
+            return [self.get_bounds(p) for p in self.shape_parameters.keys()]
+        elif parameter_name in list(self.__likelihood.rate_parameters.keys()) + list(self.__likelihood.shape_parameters.keys()):
+            return self.__likelihood.get_bounds(parameter_name)
+        # in the newly added parameters
+        else:
+            anchor_settings = list(self.shape_parameters[parameter_name][0].keys())
+            return min(anchor_settings), max(anchor_settings)
+
+    def _simulate(self, kwargs=None, livetime_days=None):
+        """simulate function including coupling parameters and rate parameters"""
+        if kwargs is None:
+            kwargs = dict()
+
+        kwargs = deepcopy(self._parameter_converter(with_suffix=False, **kwargs))
+
+        rate_multipliers = dict()
+        for k, v in kwargs.items():
+            if k in self.__likelihood.rate_parameters.keys():
+                rate_multipliers[k] = v
+
+        return self.__likelihood.base_model.simulate(rate_multipliers=rate_multipliers, livetime_days=livetime_days)
+
+    def _parameter_converter(self, with_suffix=True, **kwargs):
+        """
+        convert one parameter to another while keeping the rest.
+        :param conv_config: dict about how we do the conversion, in the form of:
+        dict(paramter_final_1=dict(params=[p_origin_1, p_origin_2, ...], func)
+        :param kwargs: kwargs to be converted
+        :return: converted kwargs
+        """
+        removed_params = []
+
+        if not with_suffix:
+            kwargs_copy = dict()
+            for k, v in kwargs.items():
+                if k in self.__likelihood.rate_parameters.keys():
+                    kwargs_copy[k + "_rate_multiplier"] = v
+                else:
+                    kwargs_copy[k] = v
+
+            kwargs = deepcopy(kwargs_copy)
+
+        pass_kwargs = OrderedDict()
+
+        for k, v in self.conv_config.items():
+            # shape param -> rate param
+            if k.endswith("_rate_multiplier"):
+                _params = [kwargs.get(_k, 1) for _k in v["params"]]
+                pass_kwargs[k] = v["func"](*_params)
+
+                # params converted into other params won't enter the likelihood
+                for _k in v["params"]:
+                    if _k not in removed_params:
+                        removed_params.append(_k)
+
+        # retain the rest
+        for k, v in kwargs.items():
+            if k not in removed_params:
+                pass_kwargs[k] = v
+
+        # remove suffix if without suffix
+        if not with_suffix:
+            pass_kwargs_copy = OrderedDict()
+            for k, v in pass_kwargs.items():
+                _name = k.split("_rate_multiplier")[0]
+                pass_kwargs_copy[_name] = v
+
+            pass_kwargs = deepcopy(pass_kwargs_copy)
+
+        return pass_kwargs
 
 
 class LogLikelihoodSum(object):
@@ -796,5 +841,5 @@ class LogAncillaryLikelihood(object):
 
 # Add the inference methods from .inference
 for methodname in inference.__all__:
-    for q in (LogLikelihoodBase, LogLikelihoodSum, LogAncillaryLikelihood):
+    for q in (LogLikelihoodBase, LogLikelihoodSum, LogAncillaryLikelihood, LogLikelihoodVaried):
         setattr(q, methodname, getattr(inference, methodname))
