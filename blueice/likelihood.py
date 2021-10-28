@@ -586,7 +586,6 @@ class LogLikelihoodVaried(object):
 
     def __init__(self, likelihood, conv_config):
         self.__likelihood = likelihood
-        # self.coupling_parameters = OrderedDict()
         self.conv_config = conv_config
         self.pdf_base_config = self.__likelihood.pdf_base_config
 
@@ -623,6 +622,27 @@ class LogLikelihoodVaried(object):
         model = deepcopy(self.__likelihood.base_model)
         model.simulate = self._simulate
         return model
+
+    # @property
+    # def pdf_base_config(self):
+    #     """wrapper for the pdf_base_config. Mostly adjust the rate multipliers of signals based on the couplings"""
+    #     pdf_base_config = deepcopy(self.__likelihood.pdf_base_config)
+    #     rate_dict = dict()
+    #     for k, v in self.conv_config.items():
+    #         if k.endswith("_rate_multiplier"):
+    #             params = [pdf_base_config.get(p) for p in v["params"]]
+    #             source_name = k.split("_rate_multiplier")[0]
+    #             rate_dict[source_name] = v["func"](*params)
+    #
+    #     # update config
+    #     sources_copy = deepcopy(pdf_base_config["sources"])
+    #     for s in sources_copy:
+    #         source_name = s["name"]
+    #         if source_name in rate_dict.keys():
+    #             s["rate"] *= rate_dict[source_name]
+    #
+    #     pdf_base_config["sources"] = sources_copy
+    #     return pdf_base_config
 
     def set_data(self, df):
         self.__likelihood.set_data(df)
@@ -677,13 +697,14 @@ class LogLikelihoodVaried(object):
         for k, v in self.conv_config.items():
             # shape param -> rate param
             if k.endswith("_rate_multiplier"):
-                _params = [kwargs.get(_k, 1) for _k in v["params"]]
-                pass_kwargs[k] = v["func"](*_params)
+                base_value_s = [self.pdf_base_config.get(p) for p in v["params"]]
+                params = [kwargs.get(p, base_value) for p, base_value in zip(v["params"], base_value_s)]
+                pass_kwargs[k] = v["func"](*params) / v["func"](*base_value_s)
 
-                # params converted into other params won't enter the likelihood
-                for _k in v["params"]:
-                    if _k not in removed_params:
-                        removed_params.append(_k)
+                # params converted into other params won't enter the original likelihood
+                for p in v["params"]:
+                    if p not in removed_params:
+                        removed_params.append(p)
 
         # retain the rest
         for k, v in kwargs.items():
