@@ -21,7 +21,7 @@ from .utils import combine_dicts, inherit_docstring_from
 from . import inference
 
 __all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum',
-           'LogLikelihoodVaried']
+           'LogLikelihoodReParam']
 
 
 ##
@@ -581,7 +581,7 @@ def beeston_barlow_roots(a, p, U, d):
     return beeston_barlow_root1(a, p, U, d), beeston_barlow_root2(a, p, U, d)
 
 
-class LogLikelihoodVaried(object):
+class LogLikelihoodReParam(object):
     """Class that enables source dependent on several couplings."""
 
     def __init__(self, likelihood, conv_config):
