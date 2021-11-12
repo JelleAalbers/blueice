@@ -862,5 +862,5 @@ class LogAncillaryLikelihood(object):
 
 # Add the inference methods from .inference
 for methodname in inference.__all__:
-    for q in (LogLikelihoodBase, LogLikelihoodSum, LogAncillaryLikelihood, LogLikelihoodVaried):
+    for q in (LogLikelihoodBase, LogLikelihoodSum, LogAncillaryLikelihood, LogLikelihoodReParam):
         setattr(q, methodname, getattr(inference, methodname))
