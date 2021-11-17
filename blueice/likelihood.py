@@ -582,11 +582,13 @@ def beeston_barlow_roots(a, p, U, d):
 
 
 class LogLikelihoodReParam(object):
-    """Class that enables source dependent on several couplings."""
+    """Class wrapper that allows reparameterization of likelihood.
+    The conversion from old parameters to new parameters is required to provide in the conv_config."""
 
     def __init__(self, likelihood, conv_config):
         self.__likelihood = likelihood
         self.conv_config = conv_config
+        self.check_conv_config()
         self.pdf_base_config = self.__likelihood.pdf_base_config
 
     def __call__(self, compute_pdf=False, livetime_days=None, **kwargs):
@@ -595,6 +597,34 @@ class LogLikelihoodReParam(object):
                                livetime_days=livetime_days,
                                **kwargs)
         return ret
+
+    def check_conv_config(self):
+        """Make sure the new parameters are consistent"""
+        conv_config = self.conv_config
+        config = self.base_model.config
+
+        new_params_1 = [k for k in conv_config.keys() if not k.endswith("_rate_multiplier")]
+        new_params_2 = []
+
+        for k, v in conv_config.items():
+            if isinstance(v, dict):
+                for p in v["params"]:
+                    if p not in new_params_2:
+                        new_params_2.append(p)
+
+        assert new_params_1 == new_params_2, "New parameters are not consistent, double check conv_config..."
+
+        # also check if new params are in config or not
+        missing_params = ""
+        for new_p in new_params_1:
+            if not config.get(new_p, False):
+                missing_params += f"{new_p}, "
+
+        # remove the period if there are missing parameters..
+        if missing_params != "":
+            missing_params = missing_params[:-2]
+
+        assert missing_params == "", f"{missing_params} are missing in the config"
 
     @property
     def rate_parameters(self):
@@ -674,9 +704,9 @@ class LogLikelihoodReParam(object):
 
     def _parameter_converter(self, with_suffix=True, **kwargs):
         """
-        convert one parameter to another while keeping the rest.
+        convert new parameters to old parameters so that the old likelihood can use.
         :param conv_config: dict about how we do the conversion, in the form of:
-        dict(paramter_final_1=dict(params=[p_origin_1, p_origin_2, ...], func)
+        dict(op1=dict(params=[np0, np1, ...], func)
         :param kwargs: kwargs to be converted
         :return: converted kwargs
         """
