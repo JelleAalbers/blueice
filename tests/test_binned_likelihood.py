@@ -16,7 +16,7 @@ def test_single_bin():
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     assert lf() == stats.poisson(1000).logpmf(1)
     assert lf(s0_rate_multiplier=5.4) == stats.poisson(5400).logpmf(1)
@@ -31,7 +31,7 @@ def test_twobin_mc():
 
     # Make 100 events at x=1
     lf.set_data(np.ones(100,
-                        dtype=[('x', np.float), ('source', np.int)]))
+                        dtype=[('x', float), ('source', int)]))
 
     assert almost_equal(lf(),
                         stats.poisson(500).logpmf(100) + stats.poisson(500).logpmf(0),
@@ -77,7 +77,7 @@ def test_multi_bin():
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
-    
+
     lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'},base_value=1)
     lf.prepare()
 

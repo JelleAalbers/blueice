@@ -61,7 +61,7 @@ class Model(object):
 
     def range_cut(self, d):
         """Return events from dataset d which are inside the bounds of the analysis space"""
-        mask = np.ones(len(d), dtype=np.bool)
+        mask = np.ones(len(d), dtype=bool)
         for dimension, bin_edges in self.config['analysis_space']:
             mask = mask & (d[dimension] >= bin_edges[0]) & (d[dimension] <= bin_edges[-1])
         return d[mask]

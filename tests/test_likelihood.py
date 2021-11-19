@@ -12,7 +12,7 @@ def test_likelihood_value():
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     assert lf() == -1 + stats.norm.logpdf(0)
     assert lf(s0_rate_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0))
@@ -64,7 +64,7 @@ def test_rate_uncertainty():
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     log_prior = stats.norm(1, 0.5).logpdf
     assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
@@ -85,7 +85,7 @@ def test_shape_uncertainty():
     # Make a single event at x=0
     lf.prepare()
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     log_prior = stats.norm(1, 0.5).logpdf
     assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
@@ -152,7 +152,7 @@ def test_noninterpolated_pdf():
     lf.add_shape_parameter('sigma',(1.,2.))
     lf.prepare()
 
-    d = np.zeros(1,dtype=[('x',np.float)])
+    d = np.zeros(1,dtype=[('x',float)])
     lf.set_data(d)
 
     assert almost_equal(lf(compute_pdf=True,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)

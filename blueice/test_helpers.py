@@ -14,7 +14,7 @@ class GaussianSourceBase(Source):
     """Analog of GaussianSource which generates its events by PDF
     """
     def simulate(self, n_events):
-        d = np.zeros(n_events, dtype=[('x', np.float), ('source', np.int)])
+        d = np.zeros(n_events, dtype=[('x', float), ('source', int)])
         d['x'] = stats.norm(self.config['mu'], self.config['sigma']).rvs(n_events)
         return d
 
@@ -109,9 +109,9 @@ def make_data(instructions):
     """
     n_tot = sum([x['n_events'] for x in instructions])
 
-    d = np.zeros(n_tot, dtype=[('source', np.int),
-                               ('x', np.float),
-                               ('y', np.float)])
+    d = np.zeros(n_tot, dtype=[('source', int),
+                               ('x', float),
+                               ('y', float)])
 
     n_done = 0
     for instr in instructions:

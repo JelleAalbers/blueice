@@ -26,7 +26,7 @@ def test_BeestonBarlowSingleBin():
     assert lf.n_model_events is not None
 
     # Make a single event at x=0
-    lf.set_data(np.zeros(2, dtype=[('x', np.float), ('source', np.int)]))
+    lf.set_data(np.zeros(2, dtype=[('x', float), ('source', int)]))
 
     assert lf.n_model_events is not None
     assert almost_equal(28.0814209, beeston_barlow_root2(np.array([32]), 0.2, np.array([1]), np.array([2])))
@@ -55,7 +55,7 @@ def test_BeestonBarlowMultiBin():
     lf.prepare()
     assert lf.n_model_events is not None
 
-    # Make events: 
+    # Make events:
     instructions_mc = [dict(n_events=3, x=0.5),
                        dict(n_events=5, x=1.5),
                        dict(n_events=2, x=2.5),
@@ -107,7 +107,7 @@ def test_BeestonBarlow_second_source():
     lf.prepare()
     assert lf.n_model_events is not None
 
-    # Make events: 
+    # Make events:
     instructions_mc = [dict(n_events=3, x=0.5),
                        dict(n_events=5, x=1.5),
                        dict(n_events=2, x=2.5),

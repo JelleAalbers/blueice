@@ -14,7 +14,7 @@ __all__ = ['read_csv', 'read_files_in']
 
 def read_csv(filename):
     result = pd.read_csv(filename, delimiter=',', names=['x', 'y'], comment='#')
-    result = result.values[1:].astype(np.float).T
+    result = result.values[1:].astype(float).T
     return result
 
 
