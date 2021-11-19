@@ -1,5 +1,4 @@
-# import matplotlib
-# matplotlib.use('agg')
+import pytest
 
 from blueice.test_helpers import *
 from blueice.inference import *
@@ -7,6 +6,10 @@ from blueice.likelihood import UnbinnedLogLikelihood as LogLikelihood
 
 
 def test_fit_minuit():
+    import iminuit
+    if not iminuit.__version__.startswith('1.'):
+        pytest.skip("Blueice's minuit wrappers assume minuit 1.x")
+
     # Single rate parameter
     lf = LogLikelihood(test_conf())
     lf.add_rate_parameter('s0')
