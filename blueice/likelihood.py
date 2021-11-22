@@ -653,27 +653,6 @@ class LogLikelihoodReParam(object):
         model.simulate = self._simulate
         return model
 
-    # @property
-    # def pdf_base_config(self):
-    #     """wrapper for the pdf_base_config. Mostly adjust the rate multipliers of signals based on the couplings"""
-    #     pdf_base_config = deepcopy(self.__likelihood.pdf_base_config)
-    #     rate_dict = dict()
-    #     for k, v in self.conv_config.items():
-    #         if k.endswith("_rate_multiplier"):
-    #             params = [pdf_base_config.get(p) for p in v["params"]]
-    #             source_name = k.split("_rate_multiplier")[0]
-    #             rate_dict[source_name] = v["func"](*params)
-    #
-    #     # update config
-    #     sources_copy = deepcopy(pdf_base_config["sources"])
-    #     for s in sources_copy:
-    #         source_name = s["name"]
-    #         if source_name in rate_dict.keys():
-    #             s["rate"] *= rate_dict[source_name]
-    #
-    #     pdf_base_config["sources"] = sources_copy
-    #     return pdf_base_config
-
     def set_data(self, df):
         self.__likelihood.set_data(df)
 

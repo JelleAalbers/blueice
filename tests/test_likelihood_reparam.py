@@ -97,8 +97,3 @@ def test_consistency_new_params(use_wrong_config=False, use_wrong_conv_config=Fa
 
     # get new likelihood
     lf_reparam = LogLikelihoodReParam(lf_old, conv_config)
-
-
-
-
-
