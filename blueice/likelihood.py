@@ -612,7 +612,8 @@ class LogLikelihoodReParam(object):
                     if p not in new_params_2:
                         new_params_2.append(p)
 
-        assert new_params_1 == new_params_2, "New parameters are not consistent, double check conv_config..."
+        # order doesn't matter
+        assert set(new_params_1) == set(new_params_2), "New parameters are not consistent, double check conv_config..."
 
         # also check if new params are in config or not
         missing_params = ""
