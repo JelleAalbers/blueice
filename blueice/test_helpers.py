@@ -66,6 +66,16 @@ BASE_CONFIG = dict(
 )
 
 
+# base config for conv_config
+BASE_CONV_CONFIG = dict(
+    np0=(np.linspace(1e-12, 10, 2), None, None),
+    np1=(np.linspace(1e-12, 10, 2), None, None),
+    op0_rate_multiplier=dict(params=["np0"], func=lambda np0: np0**2),
+    op1_rate_multiplier=dict(params=["np1"], func=lambda np1: np1**2),
+    op2_rate_multiplier=dict(params=["np0", "np1"], func=lambda np0, np1: np0*np1),
+)
+
+
 def test_conf(n_sources=1, mc=False, **kwargs):
     conf = deepcopy(BASE_CONFIG)
     conf['sources'] = [{'name': 's%d' % i} for i in range(n_sources)]
@@ -73,6 +83,18 @@ def test_conf(n_sources=1, mc=False, **kwargs):
         conf['default_source_class'] = GaussianMCSource
     return combine_dicts(conf, kwargs)
 
+def test_conf_reparam(n_source=1, mc=False, **kwargs):
+    conf = test_conf(n_source, mc, **kwargs)
+    # config for reparam
+    conf["sources"] = [
+        dict(name="op0"),
+        dict(name="op1"),
+        dict(name="op2"),
+    ]
+
+    conf["np0"] = 1
+    conf["np1"] = 1
+    return conf
 
 def almost_equal(a, b, fraction=1e-6):
     return abs((a - b)/a) <= fraction
