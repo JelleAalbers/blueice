@@ -392,7 +392,7 @@ def one_parameter_interval(lf, target, bound,
 def plot_likelihood_ratio(lf, *space, vmax=15,
                           bestfit_routine=None,
                           plot_kwargs=None, **kwargs):
-    """Plots the - loglikelihood ratio derived from LogLikelihood lf in a parameter space
+    """Plots the -2loglikelihood ratio derived from LogLikelihood lf in a parameter space
     :param lf: LogLikelihood function with data set.
     :param space: list/tuple of tuples (dimname, points to plot)
     :param vmax: Limit for color bar (2d) or y axis (1d)
@@ -405,8 +405,9 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
     if plot_kwargs is None:
         plot_kwargs = {}
 
+    best = bestfit_routine(lf, **kwargs)[1]
     results = []
-    label = "-Log likelihood ratio"
+    label = "-2Log likelihood ratio"
     if len(space) == 1:
         dim, x = space[0]
         for q in x:
@@ -414,8 +415,8 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
             lf_kwargs.update(kwargs)
             results.append(bestfit_routine(lf, **lf_kwargs)[1])
         results = np.array(results)
-        results = results.max() - results
-        plt.plot(x, results, **plot_kwargs)
+        results = best - results
+        plt.plot(x, 2.*results, **plot_kwargs)
         plt.ylim(0, vmax)
         plt.ylabel(label)
         plt.xlabel(dim)
@@ -432,10 +433,8 @@ def plot_likelihood_ratio(lf, *space, vmax=15,
                 results[-1].append(bestfit_routine(lf, **lf_kwargs)[1])
         z1, z2 = np.meshgrid(x, y)
         results = np.array(results)
-        best = np.nanmax(results)
-        print(best)
         results = best - results
-        plt.pcolormesh(z1, z2, results.T, vmax=vmax, **plot_kwargs)
+        plt.pcolormesh(z1, z2, 2.*results.T, vmax=vmax, **plot_kwargs)
         plt.colorbar(label=label)
         plt.xlabel(dims[0])
         plt.ylabel(dims[1])
