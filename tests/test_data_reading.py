@@ -47,5 +47,5 @@ def test_data_reading(tempdir):
     assert full_path in data_reading.CACHE
 
     # Test if we can read the test config without crashing
-    data_reading.read_files_in(test_conf(), data_dirs=tempdir)
+    data_reading.read_files_in(conf_for_test(), data_dirs=tempdir)
 

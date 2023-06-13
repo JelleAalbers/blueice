@@ -76,15 +76,15 @@ BASE_CONV_CONFIG = dict(
 )
 
 
-def test_conf(n_sources=1, mc=False, **kwargs):
+def conf_for_test(n_sources=1, mc=False, **kwargs):
     conf = deepcopy(BASE_CONFIG)
     conf['sources'] = [{'name': 's%d' % i} for i in range(n_sources)]
     if mc:
         conf['default_source_class'] = GaussianMCSource
     return combine_dicts(conf, kwargs)
 
-def test_conf_reparam(n_source=1, mc=False, **kwargs):
-    conf = test_conf(n_source, mc, **kwargs)
+def conf_for_reparam_test(n_source=1, mc=False, **kwargs):
+    conf = conf_for_test(n_source, mc, **kwargs)
     # config for reparam
     conf["sources"] = [
         dict(name="op0"),

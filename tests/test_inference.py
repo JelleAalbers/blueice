@@ -14,7 +14,7 @@ def test_fit_minuit():
         pytest.skip("Blueice's minuit wrappers assume iminuit 1.x")
 
     # Single rate parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_rate_parameter('s0')
     lf.set_data(lf.base_model.simulate())
     fit_result, ll = bestfit_minuit(lf)
@@ -27,7 +27,7 @@ def test_fit_minuit():
     assert ll == lf(s0_rate_multiplier=1)
 
     # Single shape parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 1.5, 2))
     lf.prepare()
     lf.set_data(lf.base_model.simulate())
@@ -35,7 +35,7 @@ def test_fit_minuit():
     assert 'some_multiplier' in fit_result
 
     # Shape and rate parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_rate_parameter('s0')
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 1.5, 2))
     lf.prepare()
@@ -45,7 +45,7 @@ def test_fit_minuit():
     assert 's0_rate_multiplier' in fit_result
 
     # Non-numeric shape parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'}, base_value=1)
     lf.prepare()
     lf.set_data(lf.base_model.simulate())
@@ -54,7 +54,7 @@ def test_fit_minuit():
 
 def test_fit_scipy():
     # Single rate parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_rate_parameter('s0')
     lf.set_data(lf.base_model.simulate())
     fit_result, ll = bestfit_scipy(lf)
@@ -67,7 +67,7 @@ def test_fit_scipy():
     assert ll == lf(s0_rate_multiplier=1)
 
     # Single shape parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 1.5, 2))
     lf.prepare()
     lf.set_data(lf.base_model.simulate())
@@ -75,7 +75,7 @@ def test_fit_scipy():
     assert 'some_multiplier' in fit_result
 
     # Shape and rate parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_rate_parameter('s0')
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 1.5, 2))
     lf.prepare()
@@ -85,7 +85,7 @@ def test_fit_scipy():
     assert 's0_rate_multiplier' in fit_result
 
     # Non-numeric shape parameter
-    lf = LogLikelihood(test_conf())
+    lf = LogLikelihood(conf_for_test())
     lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'}, base_value=1)
     lf.prepare()
     lf.set_data(lf.base_model.simulate())
@@ -116,7 +116,7 @@ def test_limit():
     """Test the limit setting code
     For now just tests if it runs, does not test whether the results are correct...
     """
-    lf = LogLikelihood(test_conf(n_sources=2))
+    lf = LogLikelihood(conf_for_test(n_sources=2))
     lf.add_rate_parameter('s0')
     lf.prepare()
     lf.set_data(lf.base_model.simulate())

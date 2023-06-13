@@ -3,7 +3,7 @@ from blueice.model import Model
 
 
 def test_mcsource():
-    conf = test_conf(mc=True)
+    conf = conf_for_test(mc=True)
     m = Model(conf)
     s = m.sources[0]
     bins = conf['analysis_space'][0][1]

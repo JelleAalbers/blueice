@@ -14,7 +14,7 @@ def test_BeestonBarlowSingleBin():
     instructions_mc = [dict(n_events=32, x=0.5)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      events_per_day=32/5,
                      analysis_space=[['x', [0, 1]]],
                      data=data)
@@ -44,7 +44,7 @@ def test_BeestonBarlowMultiBin():
                        dict(n_events=27, x=3.5),]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      events_per_day=105/5,
                      analysis_space=[['x', [0, 1, 2, 3, 4]]],
                      data=data)
@@ -92,7 +92,7 @@ def test_BeestonBarlow_second_source():
 
     # in sum, 105 calibration/mc evts.
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      analysis_space=[['x', [0, 1, 2, 3, 4]]],
                      dummy=1)
 

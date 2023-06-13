@@ -2,7 +2,7 @@ from blueice.test_helpers import *
 from blueice.model import Model
 
 def test_rates():
-    m = Model(test_conf(n_sources=1))
+    m = Model(conf_for_test(n_sources=1))
     np.testing.assert_array_equal(m.expected_events(), np.array([1000]))
 
     m.config['livetime_days'] = 2
@@ -19,7 +19,7 @@ def test_rates():
     m.config['some_multiplier'] = 1
 
     # Creating a new model, however, will do the trick:
-    conf = test_conf(n_sources=2)
+    conf = conf_for_test(n_sources=2)
     conf['some_multiplier'] = 2
     m = Model(conf)
     np.testing.assert_array_equal(m.expected_events(), np.array([2000, 2000]))
@@ -31,7 +31,7 @@ def test_rates():
     assert m.get_source('s1') == m.sources[1]
 
     # Test non-numeric settings
-    conf = test_conf(n_sources=1)
+    conf = conf_for_test(n_sources=1)
     conf['strlen_multiplier'] = 'hi'
     m = Model(conf)
     np.testing.assert_array_equal(m.expected_events(), np.array([2000]))

@@ -7,7 +7,7 @@ from copy import deepcopy
 
 def test_likelihood_value():
     """Just a sanity check to show we get the right likelihood values"""
-    config = test_conf_reparam(events_per_day=1)
+    config = conf_for_reparam_test(events_per_day=1)
     conv_config = deepcopy(BASE_CONV_CONFIG)
     # initialize the old likelihood first
     # this is an input for the reparameterized likelihood
@@ -23,7 +23,7 @@ def test_likelihood_value():
     lf_reparam = LogLikelihoodReParam(lf_old, conv_config)
 
     # dummy data
-    d = np.zeros(3, dtype=[('x', np.float), ('source', np.int)])
+    d = np.zeros(3, dtype=[('x', float), ('source', int)])
     lf_reparam.set_data(d)
 
     def compute_lf(np0=1, np1=1):
@@ -42,7 +42,7 @@ def test_likelihood_value():
 
 def test_likelihoods_before_after_reparam():
     """Compare the likelihood before and after reparameterization"""
-    config = test_conf_reparam(events_per_day=1)
+    config = conf_for_reparam_test(events_per_day=1)
     conv_config = deepcopy(BASE_CONV_CONFIG)
     # initialize the old likelihood first
     # this is an input for the reparameterized likelihood
@@ -75,7 +75,7 @@ def test_consistency_new_params(use_wrong_config=False, use_wrong_conv_config=Fa
     1) inside the conv_config
     2) between conv_config and config
     """
-    config = test_conf_reparam(events_per_day=1)
+    config = conf_for_reparam_test(events_per_day=1)
     conv_config = deepcopy(BASE_CONV_CONFIG)
 
     if use_wrong_config:

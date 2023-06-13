@@ -8,7 +8,7 @@ import pytest
 
 
 def test_single_bin():
-    conf = test_conf(mc=True, analysis_space=[['x', [-40,40 ]]])
+    conf = conf_for_test(mc=True, analysis_space=[['x', [-40,40 ]]])
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
@@ -23,7 +23,7 @@ def test_single_bin():
 
 
 def test_twobin_mc():
-    conf = test_conf(mc=True, analysis_space=[['x', [-40, 0, 40]]])
+    conf = conf_for_test(mc=True, analysis_space=[['x', [-40, 0, 40]]])
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
@@ -43,7 +43,7 @@ def test_multi_bin_single_dim():
                        dict(n_events=56, x=1.5)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(events_per_day=42,
+    conf = conf_for_test(events_per_day=42,
                      analysis_space=[['x', [0, 1, 5]]], default_source_class=FixedSampleSource, data=data)
 
     lf = BinnedLogLikelihood(conf)
@@ -72,7 +72,7 @@ def test_multi_bin():
                        dict(n_events=14, x=1.5, y=2)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(events_per_day=42, default_source_class=FixedSampleSource, data=data,
+    conf = conf_for_test(events_per_day=42, default_source_class=FixedSampleSource, data=data,
                      analysis_space=[['x', [0, 1, 5]], ['y', [0, 1, 4]]])
 
     lf = BinnedLogLikelihood(conf)
