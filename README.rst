@@ -1,7 +1,7 @@
 blueice: Build Likelihoods Using Efficient Interpolations and monte-Carlo generated Events
 ==========================================================================================
-.. image:: https://travis-ci.org/JelleAalbers/blueice.svg?branch=master
-    :target: https://travis-ci.org/JelleAalbers/blueice
+.. image:: https://github.com/JelleAalbers/blueice/actions/workflows/pytest.yml/badge.svg?branch=master
+    :target: https://github.com/JelleAalbers/blueice/actions/workflows/pytest.yml
 .. image:: https://coveralls.io/repos/github/JelleAalbers/blueice/badge.svg?branch=master
     :target: https://coveralls.io/github/JelleAalbers/blueice?branch=master
 .. image:: https://readthedocs.org/projects/blueice/badge/?version=latest
