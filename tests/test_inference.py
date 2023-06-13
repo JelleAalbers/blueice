@@ -6,9 +6,12 @@ from blueice.likelihood import UnbinnedLogLikelihood as LogLikelihood
 
 
 def test_fit_minuit():
-    import iminuit
+    try:
+        import iminuit
+    except ImportError:
+        pytest.skip("Skipping iminuit tests, iminuit did not import")
     if not iminuit.__version__.startswith('1.'):
-        pytest.skip("Blueice's minuit wrappers assume minuit 1.x")
+        pytest.skip("Blueice's minuit wrappers assume iminuit 1.x")
 
     # Single rate parameter
     lf = LogLikelihood(test_conf())
