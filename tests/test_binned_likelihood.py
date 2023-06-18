@@ -8,7 +8,7 @@ import pytest
 
 
 def test_single_bin():
-    conf = test_conf(mc=True, analysis_space=[['x', [-40,40 ]]])
+    conf = conf_for_test(mc=True, analysis_space=[['x', [-40,40 ]]])
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
@@ -16,14 +16,14 @@ def test_single_bin():
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     assert lf() == stats.poisson(1000).logpmf(1)
     assert lf(s0_rate_multiplier=5.4) == stats.poisson(5400).logpmf(1)
 
 
 def test_twobin_mc():
-    conf = test_conf(mc=True, analysis_space=[['x', [-40, 0, 40]]])
+    conf = conf_for_test(mc=True, analysis_space=[['x', [-40, 0, 40]]])
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
@@ -31,7 +31,7 @@ def test_twobin_mc():
 
     # Make 100 events at x=1
     lf.set_data(np.ones(100,
-                        dtype=[('x', np.float), ('source', np.int)]))
+                        dtype=[('x', float), ('source', int)]))
 
     assert almost_equal(lf(),
                         stats.poisson(500).logpmf(100) + stats.poisson(500).logpmf(0),
@@ -43,7 +43,7 @@ def test_multi_bin_single_dim():
                        dict(n_events=56, x=1.5)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(events_per_day=42,
+    conf = conf_for_test(events_per_day=42,
                      analysis_space=[['x', [0, 1, 5]]], default_source_class=FixedSampleSource, data=data)
 
     lf = BinnedLogLikelihood(conf)
@@ -72,12 +72,12 @@ def test_multi_bin():
                        dict(n_events=14, x=1.5, y=2)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(events_per_day=42, default_source_class=FixedSampleSource, data=data,
+    conf = conf_for_test(events_per_day=42, default_source_class=FixedSampleSource, data=data,
                      analysis_space=[['x', [0, 1, 5]], ['y', [0, 1, 4]]])
 
     lf = BinnedLogLikelihood(conf)
     lf.add_rate_parameter('s0')
-    
+
     lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'},base_value=1)
     lf.prepare()
 

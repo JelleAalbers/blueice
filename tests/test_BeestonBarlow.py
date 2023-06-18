@@ -14,7 +14,7 @@ def test_BeestonBarlowSingleBin():
     instructions_mc = [dict(n_events=32, x=0.5)]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      events_per_day=32/5,
                      analysis_space=[['x', [0, 1]]],
                      data=data)
@@ -26,7 +26,7 @@ def test_BeestonBarlowSingleBin():
     assert lf.n_model_events is not None
 
     # Make a single event at x=0
-    lf.set_data(np.zeros(2, dtype=[('x', np.float), ('source', np.int)]))
+    lf.set_data(np.zeros(2, dtype=[('x', float), ('source', int)]))
 
     assert lf.n_model_events is not None
     assert almost_equal(28.0814209, beeston_barlow_root2(np.array([32]), 0.2, np.array([1]), np.array([2])))
@@ -44,7 +44,7 @@ def test_BeestonBarlowMultiBin():
                        dict(n_events=27, x=3.5),]
     data, n_mc = make_data(instructions_mc)
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      events_per_day=105/5,
                      analysis_space=[['x', [0, 1, 2, 3, 4]]],
                      data=data)
@@ -55,7 +55,7 @@ def test_BeestonBarlowMultiBin():
     lf.prepare()
     assert lf.n_model_events is not None
 
-    # Make events: 
+    # Make events:
     instructions_mc = [dict(n_events=3, x=0.5),
                        dict(n_events=5, x=1.5),
                        dict(n_events=2, x=2.5),
@@ -92,7 +92,7 @@ def test_BeestonBarlow_second_source():
 
     # in sum, 105 calibration/mc evts.
 
-    conf = test_conf(default_source_class=FixedSampleSource,
+    conf = conf_for_test(default_source_class=FixedSampleSource,
                      analysis_space=[['x', [0, 1, 2, 3, 4]]],
                      dummy=1)
 
@@ -107,7 +107,7 @@ def test_BeestonBarlow_second_source():
     lf.prepare()
     assert lf.n_model_events is not None
 
-    # Make events: 
+    # Make events:
     instructions_mc = [dict(n_events=3, x=0.5),
                        dict(n_events=5, x=1.5),
                        dict(n_events=2, x=2.5),

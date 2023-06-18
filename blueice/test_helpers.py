@@ -14,7 +14,7 @@ class GaussianSourceBase(Source):
     """Analog of GaussianSource which generates its events by PDF
     """
     def simulate(self, n_events):
-        d = np.zeros(n_events, dtype=[('x', np.float), ('source', np.int)])
+        d = np.zeros(n_events, dtype=[('x', float), ('source', int)])
         d['x'] = stats.norm(self.config['mu'], self.config['sigma']).rvs(n_events)
         return d
 
@@ -76,15 +76,15 @@ BASE_CONV_CONFIG = dict(
 )
 
 
-def test_conf(n_sources=1, mc=False, **kwargs):
+def conf_for_test(n_sources=1, mc=False, **kwargs):
     conf = deepcopy(BASE_CONFIG)
     conf['sources'] = [{'name': 's%d' % i} for i in range(n_sources)]
     if mc:
         conf['default_source_class'] = GaussianMCSource
     return combine_dicts(conf, kwargs)
 
-def test_conf_reparam(n_source=1, mc=False, **kwargs):
-    conf = test_conf(n_source, mc, **kwargs)
+def conf_for_reparam_test(n_source=1, mc=False, **kwargs):
+    conf = conf_for_test(n_source, mc, **kwargs)
     # config for reparam
     conf["sources"] = [
         dict(name="op0"),
@@ -109,9 +109,9 @@ def make_data(instructions):
     """
     n_tot = sum([x['n_events'] for x in instructions])
 
-    d = np.zeros(n_tot, dtype=[('source', np.int),
-                               ('x', np.float),
-                               ('y', np.float)])
+    d = np.zeros(n_tot, dtype=[('source', int),
+                               ('x', float),
+                               ('y', float)])
 
     n_done = 0
     for instr in instructions:

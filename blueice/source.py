@@ -250,8 +250,8 @@ class HistogramPdfSource(Source):
 
         # Convert to numpy record array
         d = np.zeros(n_events,
-                     dtype=[('source', np.int)] +
-                           [(x[0], np.float)
+                     dtype=[('source', int)] +
+                           [(x[0], float)
                             for x in self.config['analysis_space']])
         for i, x in enumerate(self.config['analysis_space']):
             d[x[0]] = q[:, i]
@@ -300,7 +300,7 @@ class DensityEstimatingSource(HistogramPdfSource):
         #    (fraction_in_range keeps track of how many events were not in range)
         #  - the bin sizes
         self._pdf_histogram = mh.similar_blank_hist()
-        self._pdf_histogram.histogram = mh.histogram.astype(np.float) / mh.n
+        self._pdf_histogram.histogram = mh.histogram.astype(float) / mh.n
 
         # For the bin widths we need to take an outer product of several vectors, for which numpy has no builtin
         # This reduce trick does the job instead, see http://stackoverflow.com/questions/17138393

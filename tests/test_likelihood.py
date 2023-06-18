@@ -7,26 +7,26 @@ import scipy.stats as sps
 
 def test_likelihood_value():
     """Just a sanity check to show we get the right likelihood values"""
-    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
+    lf = UnbinnedLogLikelihood(conf_for_test(events_per_day=1))
     lf.add_rate_parameter('s0')
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     assert lf() == -1 + stats.norm.logpdf(0)
     assert lf(s0_rate_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0))
 
 
 def test_no_shape_params():
-    lf = UnbinnedLogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(conf_for_test())
     d = lf.base_model.simulate()
     lf.prepare()
     lf.set_data(d)
     lf()
 
     # Test a MonteCarloSource, which should trigger a pdf computation
-    lf = UnbinnedLogLikelihood(test_conf(mc=True))
+    lf = UnbinnedLogLikelihood(conf_for_test(mc=True))
     d = lf.base_model.simulate()
     lf.prepare()
     lf.set_data(d)
@@ -34,7 +34,7 @@ def test_no_shape_params():
 
 
 def test_shape_params():
-    lf = UnbinnedLogLikelihood(test_conf(n_sources=1))
+    lf = UnbinnedLogLikelihood(conf_for_test(n_sources=1))
     lf.add_rate_parameter('s0')
     with pytest.raises(InvalidParameterSpecification):
         lf.add_shape_parameter('strlen_multiplier', {1: 'x', 2: 'hi', 3:'wha'})
@@ -59,12 +59,12 @@ def test_shape_params():
 
 
 def test_rate_uncertainty():
-    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
+    lf = UnbinnedLogLikelihood(conf_for_test(events_per_day=1))
     lf.add_rate_uncertainty('s0', 0.5)
 
     # Make a single event at x=0
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     log_prior = stats.norm(1, 0.5).logpdf
     assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
@@ -72,7 +72,7 @@ def test_rate_uncertainty():
 
 
 def test_shape_uncertainty():
-    lf = UnbinnedLogLikelihood(test_conf(events_per_day=1))
+    lf = UnbinnedLogLikelihood(conf_for_test(events_per_day=1))
 
     with pytest.raises(InvalidParameterSpecification):
         lf.add_shape_uncertainty('strlen_multiplier', 0.5, {1: 'x', 2: 'hi', 3: 'wha'})
@@ -85,7 +85,7 @@ def test_shape_uncertainty():
     # Make a single event at x=0
     lf.prepare()
     lf.set_data(np.zeros(1,
-                         dtype=[('x', np.float), ('source', np.int)]))
+                         dtype=[('x', float), ('source', int)]))
 
     log_prior = stats.norm(1, 0.5).logpdf
     assert lf() == -1 + stats.norm.logpdf(0) + log_prior(1)
@@ -93,7 +93,7 @@ def test_shape_uncertainty():
 
 
 def test_multisource_likelihood():
-    lf = UnbinnedLogLikelihood(test_conf(n_sources=2))
+    lf = UnbinnedLogLikelihood(conf_for_test(n_sources=2))
 
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 2, 4))
     lf.add_rate_parameter('s0')
@@ -120,7 +120,7 @@ def test_multisource_likelihood():
 
 
 def test_error_handling():
-    lf = UnbinnedLogLikelihood(test_conf())
+    lf = UnbinnedLogLikelihood(conf_for_test())
     d = lf.base_model.simulate()
     lf.add_shape_parameter('some_multiplier', (0.5, 1, 2))
 
@@ -145,14 +145,14 @@ def test_error_handling():
 def test_noninterpolated_pdf():
     #
 
-    conf = test_conf(n_sources=1)
+    conf = conf_for_test(n_sources=1)
     conf['some_multiplier']=3e-3
     lf = UnbinnedLogLikelihood(conf)
     lf.add_shape_parameter('mu',(0.,1.))
     lf.add_shape_parameter('sigma',(1.,2.))
     lf.prepare()
 
-    d = np.zeros(1,dtype=[('x',np.float)])
+    d = np.zeros(1,dtype=[('x',float)])
     lf.set_data(d)
 
     assert almost_equal(lf(compute_pdf=True,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)
