@@ -1,5 +1,5 @@
 from blueice.test_helpers import *
-from blueice.likelihood import UnbinnedLogLikelihood
+from blueice.likelihood import UnbinnedLogLikelihood, BinnedLogLikelihood
 from blueice.exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 import pytest
 import scipy.stats as sps
@@ -157,3 +157,16 @@ def test_noninterpolated_pdf():
 
     assert almost_equal(lf(compute_pdf=True,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)
     assert not almost_equal(lf(compute_pdf=False,mu=0.5,sigma=1.5),sps.poisson(3).logpmf(1)+sps.norm(0.5,1.5).logpdf(0),1e-5)
+
+
+def test_zero_bin():
+    conf = conf_for_test(mc=True, analysis_space=[['x', [-40,40 ]]])
+
+    lf = BinnedLogLikelihood(conf)
+    lf.add_rate_parameter('s0')
+    lf.prepare()
+
+    # Make a single event at x=0
+    lf.set_data(np.zeros(0, dtype=[('x', float), ('source', int)]))
+
+    assert lf(s0_rate_multiplier=0.) == stats.poisson(0).logpmf(0)
