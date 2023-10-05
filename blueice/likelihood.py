@@ -10,7 +10,6 @@ from functools import wraps
 import numpy as np
 from multihist import Histdd
 from scipy import stats
-from scipy.special import gammaln
 from tqdm import tqdm
 
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
@@ -546,7 +545,7 @@ class BinnedLogLikelihood(LogLikelihoodBase):
 
         observed_counts = self.data_events_per_bin.histogram
 
-        ret = observed_counts * np.log(expected_total) - expected_total - gammaln(observed_counts + 1.).real
+        ret = stats.poisson(expected_total).logpmf(observed_counts)
         return np.sum(ret)
 
 
