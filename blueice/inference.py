@@ -369,6 +369,7 @@ def one_parameter_interval(lf, target, bound,
         if kind == 'upper' and hypothesis <= global_best:
             result = 0
         elif kind == 'lower' and hypothesis >= global_best:
+            print('you can never enter here anyway cause of brentq bounds')
             result = 0
         else:
             # Find the best fit assuming the hypothesis (numerator of likelihood ratio)
@@ -391,7 +392,11 @@ def one_parameter_interval(lf, target, bound,
             a = np.nan
         return a, b
     elif kind == 'lower':
-        return brentq(t, bound, global_best, args=[1 - confidence_level])
+        this_arg = 1-confidence_level
+        if t(bound, this_arg)*t(global_best, this_arg)>0: # same sign so no root
+            return np.nan
+        else:
+            return brentq(t, bound, global_best, args=[1 - confidence_level])
     elif kind == 'upper':
         return brentq(t, global_best, bound, args=[confidence_level])
 
