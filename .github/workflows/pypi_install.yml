@@ -1,0 +1,33 @@
+# Pipy upload blueice after a release (or manually).
+## Mostly based on https://github.com/pypa/gh-action-pypi-publish/blob/f9ed8ba9ad06d20b1ebb6002ffb93050ed9a1951/README.md
+name: PyPI
+
+on:
+  workflow_dispatch:
+  release:
+    types: [ created ]
+
+jobs:
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/blueice
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+    steps:
+    # retrieve your distributions here
+    # Setup steps
+    - name: Setup python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    - name: Checkout repo
+      uses: actions/checkout@v2
+    - name: Install dependencies
+      run: pip install wheel
+    - name: Build package
+      run: python setup.py sdist bdist_wheel
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
