@@ -170,3 +170,37 @@ def test_zero_bin():
     lf.set_data(np.zeros(0, dtype=[('x', float), ('source', int)]))
 
     assert lf(s0_rate_multiplier=0.) == stats.poisson(0).logpmf(0)
+
+
+def test_livetime_scaling():
+    conf = conf_for_test()
+
+    # Test we cannot scale without a base lifetime
+    lf = UnbinnedLogLikelihood(conf)
+    lf.prepare()
+    d = np.zeros(1,dtype=[('x',float)])
+    lf.set_data(d)
+    orig_l = lf()
+    with pytest.raises(ValueError):
+        lf(livetime_days=1)
+
+    # Livetime scaling has the same effect as the rate multiplier
+    # (because there is just one source)
+    conf['livetime_days'] = 1
+    lf = UnbinnedLogLikelihood(conf)
+    lf.add_rate_parameter('s0')
+    lf.prepare()
+    lf.set_data(d)
+    assert lf(livetime_days=1) == orig_l
+    assert lf(livetime_days=2) == lf(s0_rate_multiplier=2)
+    assert lf(livetime_days=0) == lf(s0_rate_multiplier=0)
+
+    # Can't scale with a zero livetime
+    conf['livetime_days'] = 0
+    lf_zero = UnbinnedLogLikelihood(conf)
+    lf_zero.prepare()
+    lf_zero.set_data(d)
+    with pytest.raises(ValueError):
+        lf_zero(livetime_days=1)
+    # ... but we can still evaluate the lf:
+    assert lf_zero() == lf(s0_rate_multiplier=0)

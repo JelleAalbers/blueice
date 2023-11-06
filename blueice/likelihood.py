@@ -279,9 +279,16 @@ class LogLikelihoodBase:
             if log_prior is not None:
                 result += log_prior(mult)
 
-        # Apply the lifetime scaling
+        # Scale the live-time
         if livetime_days is not None:
-            mus *= livetime_days / self.pdf_base_config['livetime_days']
+            if 'livetime_days' not in self.pdf_base_config:
+                raise ValueError("Cannot scale live-time, base value absent")
+            if self.pdf_base_config['livetime_days'] == 0:
+                if livetime_days != 0:
+                    raise ValueError("Cannot scale from 0 to non-0 livetime")
+                assert np.all(mus == 0), "Got non-0 mus with 0 livetime?!"
+            else:
+                mus *= livetime_days / self.pdf_base_config['livetime_days']
 
         # Apply efficiency to those sources that use it:
         if True in self.source_apply_efficiency:
