@@ -12,7 +12,7 @@ requirements = open('requirements.txt').read().splitlines()
 test_requirements = requirements + ['coverage']
 
 setup(name='blueice',
-      version='1.1.0',
+      version='1.2.0',
       description='Build Likelihoods Using Efficient Interpolations from monte-Carlo generated Events',
       long_description=readme + '\n\n' + history,
       author='Jelle Aalbers',
@@ -31,8 +31,10 @@ setup(name='blueice',
           'Intended Audience :: Developers',
           'License :: OSI Approved :: MIT License',
           'Natural Language :: English',
-          'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.3',
-          'Programming Language :: Python :: 3.4',
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9',
+          'Intended Audience :: Science/Research',
+          'Programming Language :: Python :: Implementation :: CPython',
+          'Topic :: Scientific/Engineering :: Physics',
       ],
 )

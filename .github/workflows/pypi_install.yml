@@ -1,0 +1,32 @@
+# Pipy upload blueice after a release (or manually).
+## Mostly based on https://github.com/pypa/gh-action-pypi-publish/blob/f9ed8ba9ad06d20b1ebb6002ffb93050ed9a1951/README.md
+name: PyPI
+
+on:
+  workflow_dispatch:
+  release:
+    types: [ created ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      # Setup steps
+      - name: Setup python
+        uses: actions/setup-python@v4.2.0
+        with:
+          python-version: '3.9'
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: pip install wheel
+
+      - name: Build package
+        run: python setup.py sdist bdist_wheel
+
+      - name: Publish a Python distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

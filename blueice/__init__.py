@@ -8,4 +8,4 @@ from .exceptions import *
 # from .inference import *   # Not needed, all the inference methods are added to LogLikelihood
 from .parallel import *
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
