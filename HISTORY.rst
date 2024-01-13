@@ -1,4 +1,13 @@
 ------------------
+1.2.0 (2024/01/13)
+------------------
+* Prevent negative rates being passed to Barlow-Beeston equation, and allow per-event weights (#32)
+* Add likelihood that takes coupling as shape parameters (#34)
+* Patch for tests (#37)
+* Use scipy stats for PoissonLL (#40)
+* Do not scale mus when livetime_days is 0 (#41)
+
+------------------
 1.1.0 (2021/01/07)
 ------------------
 * Likelihood sum wrapper (#17)
