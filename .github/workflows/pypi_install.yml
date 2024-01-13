@@ -8,26 +8,25 @@ on:
     types: [ created ]
 
 jobs:
-  pypi-publish:
-    name: Upload release to PyPI
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/blueice
     permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
     steps:
-    # retrieve your distributions here
-    # Setup steps
-    - name: Setup python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.8'
-    - name: Checkout repo
-      uses: actions/checkout@v2
-    - name: Install dependencies
-      run: pip install wheel
-    - name: Build package
-      run: python setup.py sdist bdist_wheel
-    - name: Publish package distributions to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      # Setup steps
+      - name: Setup python
+        uses: actions/setup-python@v4.2.0
+        with:
+          python-version: '3.9'
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: pip install wheel
+
+      - name: Build package
+        run: python setup.py sdist bdist_wheel
+
+      - name: Publish a Python distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
