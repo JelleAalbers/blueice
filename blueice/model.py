@@ -109,7 +109,7 @@ class Model(object):
         """
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])
-        return s.expected_events(self.config['livetime_days'])
+        return s.expected_events
 
     def show(self, d, ax=None, dims=None, **kwargs):
         """Plot the events from dataset d in the analysis range

@@ -182,6 +182,11 @@ class Source(object):
         if you decide some events are not detectable.
         """
         raise NotImplementedError
+    
+    @property
+    def expected_events(self):
+        """Return the default total number of events expected in the analysis range for the source."""
+        return self.events_per_day * self.config['livetime_days'] * self.fraction_in_range * self.config['rate_multiplier']
 
 
 class HistogramPdfSource(Source):
@@ -260,10 +265,6 @@ class HistogramPdfSource(Source):
 
     def get_pmf_grid(self):
         return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
-
-    def expected_events(self, livetime_days):
-        """Return the total number of events expected in the analysis range for the source."""
-        return self.events_per_day * livetime_days * self.fraction_in_range * self.config['rate_multiplier']
 
 
 class DensityEstimatingSource(HistogramPdfSource):
