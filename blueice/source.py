@@ -261,6 +261,10 @@ class HistogramPdfSource(Source):
     def get_pmf_grid(self):
         return self._pdf_histogram.histogram * self._bin_volumes, self._n_events_histogram.histogram
 
+    def expected_events(self, livetime_days):
+        """Return the total number of events expected in the analysis range for the source."""
+        return self.events_per_day * livetime_days * self.fraction_in_range * self.config['rate_multiplier']
+
 
 class DensityEstimatingSource(HistogramPdfSource):
     """A source which estimates its PDF by some events you give to it.
