@@ -73,6 +73,7 @@ class LogLikelihoodBase:
             likelihood_config = {}
         self.config = likelihood_config
         self.config.setdefault('morpher', 'GridInterpolator')
+        self.source_wise_interpolation = self.config.get('source_wise_interpolation', False)
 
         # Base model: no variations of any settings
         self.base_model = Model(self.pdf_base_config)
@@ -101,6 +102,7 @@ class LogLikelihoodBase:
 
         # If there are shape parameters:
         self.anchor_models = OrderedDict()  # dictionary mapping model zs -> actual model
+        self.anchor_sources = OrderedDict()  # dictionary mapping source_name -> zs -> source
         # Interpolators created by morphers. These map zs to...
         self.mus_interpolator = None                          # rates for each source
         self.ps_interpolator = None                          # (source, event) p-values (unbinned), or pmf grid (binned)
@@ -108,14 +110,57 @@ class LogLikelihoodBase:
         self.n_model_events_interpolator = lambda x: None
         self.n_model_events = None
 
+    @property
+    def source_shape_parameters(self):
+        source_shape_parameters = OrderedDict()
+        for sn, source_config in zip(self.source_name_list, self.pdf_base_config["sources"]):
+            parameter_names = source_config["parameters"]
+            shape_parameters = OrderedDict({k: v for k, v in self.shape_parameters.items() if k in parameter_names})
+            if shape_parameters:
+                source_shape_parameters[sn] = shape_parameters
+        return source_shape_parameters
+
+    def _get_shape_indices(self, source_name):
+        """Return the indices of the shape parameters used by the source."""
+        shape_keys = self.source_shape_parameters[source_name].keys()
+        return [i for i, k in enumerate(self.shape_parameters.keys()) if k in shape_keys]
+
+    def _get_model_anchor(self, anchor, source_name):
+        """Return the shape anchors of the full model, given the shape anchors of a signle source.
+        All values of shape parameters not used by this source will be set to None.
+        """
+        shape_keys = self.source_shape_parameters[source_name].keys()
+        shape_indices = self.get_shape_indices(shape_keys)
+        model_anchor = [None] * len(self.shape_parameters)
+        for i, idx in enumerate(shape_indices):
+            model_anchor[idx] = anchor[i]
+        return tuple(model_anchor)
+
     def prepare(self, n_cores=1, ipp_client=None):
         """Prepares a likelihood function with shape parameters for use.
         This will compute the models for each shape parameter anchor value combination.
         """
         if len(self.shape_parameters):
-            self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
-                                                            self.shape_parameters)
-            zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
+            if self.source_wise_interpolation:
+                # Create morphers for each source individually
+                self.source_morphers = OrderedDict()
+                for sn, shape_parameters in self.source_shape_parameters.items():
+                    self.source_morphers[sn] = MORPHERS[self.config['morpher']](
+                        self.config.get('morpher_config', {}),
+                        shape_parameters
+                    )
+                zs_list = set()
+                for source_name, morpher in self.source_morphers.items():
+                    anchor_points = morpher.get_anchor_points(bounds=None)
+                    for anchor in anchor_points:
+                        zs = self._get_model_anchor(anchor, source_name)
+                        zs_list.add(zs)
+                zs_list = list(zs_list)
+                
+            else:
+                self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
+                                                                self.shape_parameters)
+                zs_list = self.morpher.get_anchor_points(bounds=self.get_bounds())
 
             # Create the configs for each new model
             configs = []
@@ -123,7 +168,8 @@ class LogLikelihoodBase:
                 config = deepcopy(self.pdf_base_config)
                 for i, (setting_name, (anchors, _, _)) in enumerate(self.shape_parameters.items()):
                     # Translate from zs to settings using the anchors dict. Maybe not all settings are numerical.
-                    config[setting_name] = anchors[zs[i]]
+                    if zs[i] is not None:
+                        config[setting_name] = anchors[zs[i]]
                 if ipp_client is None and n_cores != 1:
                     # We have to compute in parallel: must have delayed computation on
                     config['delay_pdf_computation'] = True
@@ -150,14 +196,25 @@ class LogLikelihoodBase:
                 # Reload models so computation takes effect
                 models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
 
-            # Add the new models to the anchor_models dict
-            for zs, model in zip(zs_list, models):
-                self.anchor_models[tuple(zs)] = model
+            if self.source_wise_interpolation:
+                for i,(source_name, morpher) in enumerate(source_morphers.items()):
+                    anchors = morpher.get_anchor_points(bounds=None)
+                    self.anchor_sources[source_name] = OrderedDict()
+                    for anchor  in anchors:
+                        model_anchor = self._get_model_anchor(anchor, source_name)
+                        model_index = zs_list.index(model_anchor)
+                        self.anchor_sources[source_name][anchor] = models[model_index].sources[i]
+                # TODO: Implement self.mus_interpolator for source-wise interpolation
+            
+            else:
+                # Add the new models to the anchor_models dict
+                for zs, model in zip(zs_list, models):
+                    self.anchor_models[tuple(zs)] = model
 
-            # Build the interpolator for the rates of each source.
-            self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
-                                                                   extra_dims=[len(self.source_name_list)],
-                                                                   anchor_models=self.anchor_models)
+                # Build the interpolator for the rates of each source.
+                self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
+                                                                    extra_dims=[len(self.source_name_list)],
+                                                                    anchor_models=self.anchor_models)
 
         self.is_data_set = False
         self.is_prepared = True
@@ -440,9 +497,32 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
     def set_data(self, d):
         LogLikelihoodBase.set_data(self, d)
         if len(self.shape_parameters):
-            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
-                                                                  extra_dims=[len(self.source_name_list), len(d)],
-                                                                  anchor_models=self.anchor_models)
+            if self.source_wise_interpolation:
+                ps_interpolators = OrderedDict()
+                for sn, base_source in zip(self.source_name_list, self.base_model.sources):
+                    if sn in self.source_morphers:
+                        ps_interpolators[sn] = self.source_morphers[sn].make_interpolator(
+                            f=lambda s: s.pdf(*self.base_model.to_analysis_dimensions(d)),
+                            extra_dims=[len(d)],
+                            anchor_models=self.anchor_sources[sn])
+                    else:
+                        ps_interpolators[sn] = base_source.pdf(*self.base_model.to_analysis_dimensions(d))
+                def ps_interpolator(*args):
+                    # take zs, convert to values for each source's interpolator call the respective interpolator
+                    ps = []
+                    for sn in self.source_name_list:
+                        if sn in self.source_shape_parameters:
+                            shape_indices = self._get_shape_indices(sn)
+                            these_args = [args[i] for i in shape_indices]
+                            ps.append(ps_interpolators[sn](np.asarray(these_args)))
+                        else:
+                            ps.append(ps_interpolators[sn])
+                    return ps
+                self.ps_interpolator = ps_interpolator
+            else:
+                self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
+                                                                    extra_dims=[len(self.source_name_list), len(d)],
+                                                                    anchor_models=self.anchor_models)
         else:
             self.ps = self.base_model.score_events(d)
 
@@ -472,14 +552,17 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         self.ps, self.n_model_events = self.base_model.pmf_grids()
 
         if len(self.shape_parameters):
-            self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
-                                                                  extra_dims=list(self.ps.shape),
-                                                                  anchor_models=self.anchor_models)
+            if self.source_wise_interpolation:
+                raise NotImplementedError("Source-wise interpolation not implemented for binned likelihoods")
+            else:
+                self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
+                                                                    extra_dims=list(self.ps.shape),
+                                                                    anchor_models=self.anchor_models)
 
-            if self.model_statistical_uncertainty_handling is not None:
-                self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
-                                                                                  extra_dims=list(self.ps.shape),
-                                                                                  anchor_models=self.anchor_models)
+                if self.model_statistical_uncertainty_handling is not None:
+                    self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
+                                                                                    extra_dims=list(self.ps.shape),
+                                                                                    anchor_models=self.anchor_models)
 
     @inherit_docstring_from(LogLikelihoodBase)
     def set_data(self, d):
