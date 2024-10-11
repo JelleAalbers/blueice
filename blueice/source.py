@@ -182,7 +182,7 @@ class Source(object):
         if you decide some events are not detectable.
         """
         raise NotImplementedError
-    
+
     @property
     def expected_events(self):
         """Return the default total number of events expected in the analysis range for the source."""

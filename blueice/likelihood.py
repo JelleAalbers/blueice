@@ -155,7 +155,7 @@ class LogLikelihoodBase:
                         zs = self._get_model_anchor(anchor, source_name)
                         zs_list.add(zs)
                 zs_list = list(zs_list)
-                
+
             else:
                 self.morpher = MORPHERS[self.config['morpher']](self.config.get('morpher_config', {}),
                                                                 self.shape_parameters)
@@ -196,11 +196,10 @@ class LogLikelihoodBase:
                 models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
 
             if self.source_wise_interpolation:
-                print("USING SOURCE-WISE INTERPOLATION")
-                for i,(source_name, morpher) in enumerate(self.source_morphers.items()):
+                for i, (source_name, morpher) in enumerate(self.source_morphers.items()):
                     anchors = morpher.get_anchor_points(bounds=None)
                     self.anchor_sources[source_name] = OrderedDict()
-                    for anchor  in anchors:
+                    for anchor in anchors:
                         model_anchor = self._get_model_anchor(anchor, source_name)
                         model_index = zs_list.index(model_anchor)
                         self.anchor_sources[source_name][anchor] = models[model_index].sources[i]
@@ -213,6 +212,7 @@ class LogLikelihoodBase:
                             anchor_models=self.anchor_sources[sn])
                     else:
                         mus_interpolators[sn] = base_source.expected_events
+
                 def mus_interpolator(*args):
                     # take zs, convert to values for each source's interpolator call the respective interpolator
                     mus = []
@@ -232,9 +232,10 @@ class LogLikelihoodBase:
                     self.anchor_models[tuple(zs)] = model
 
                 # Build the interpolator for the rates of each source.
-                self.mus_interpolator = self.morpher.make_interpolator(f=lambda m: m.expected_events(),
-                                                                    extra_dims=[len(self.source_name_list)],
-                                                                    anchor_models=self.anchor_models)
+                self.mus_interpolator = self.morpher.make_interpolator(
+                    f=lambda m: m.expected_events(),
+                    extra_dims=[len(self.source_name_list)],
+                    anchor_models=self.anchor_models)
 
         self.is_data_set = False
         self.is_prepared = True
@@ -527,6 +528,7 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
                             anchor_models=self.anchor_sources[sn])
                     else:
                         ps_interpolators[sn] = base_source.pdf(*self.base_model.to_analysis_dimensions(d))
+
                 def ps_interpolator(*args):
                     # take zs, convert to values for each source's interpolator call the respective interpolator
                     ps = []
@@ -540,9 +542,10 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
                     return np.array(ps)
                 self.ps_interpolator = ps_interpolator
             else:
-                self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.score_events(d),
-                                                                    extra_dims=[len(self.source_name_list), len(d)],
-                                                                    anchor_models=self.anchor_models)
+                self.ps_interpolator = self.morpher.make_interpolator(
+                    f=lambda m: m.score_events(d),
+                    extra_dims=[len(self.source_name_list), len(d)],
+                    anchor_models=self.anchor_models)
         else:
             self.ps = self.base_model.score_events(d)
 
@@ -575,9 +578,10 @@ class BinnedLogLikelihood(LogLikelihoodBase):
             if self.source_wise_interpolation:
                 raise NotImplementedError("Source-wise interpolation not implemented for binned likelihoods")
             else:
-                self.ps_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[0],
-                                                                    extra_dims=list(self.ps.shape),
-                                                                    anchor_models=self.anchor_models)
+                self.ps_interpolator = self.morpher.make_interpolator(
+                    f=lambda m: m.pmf_grids()[0],
+                    extra_dims=list(self.ps.shape),
+                    anchor_models=self.anchor_models)
 
                 if self.model_statistical_uncertainty_handling is not None:
                     self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
