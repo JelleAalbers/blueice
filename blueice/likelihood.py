@@ -114,9 +114,17 @@ class LogLikelihoodBase:
     def source_shape_parameters(self):
         """Dict of sources with shape parameters. source name -> dict of shape parameters."""
         source_shape_parameters = OrderedDict()
-        for sn, source in zip(self.source_name_list, self.base_model.sources):
-            dont_hash_settings = source.config['dont_hash_settings']
-            shape_parameters = OrderedDict({k: v for k, v in self.shape_parameters.items() if k not in dont_hash_settings})
+        for sn, source, apply_eff, eff_name in zip(
+                self.source_name_list,
+                self.base_model.sources,
+                self.source_apply_efficiency,
+                self.source_efficiency_names
+                ):
+            ignore_parameters = source.config['dont_hash_settings']
+            # The efficiecny parameter doesn't need to be hashed but it needs to be passed to the morpher
+            if apply_eff:
+                ignore_parameters.pop(eff_name, None)
+            shape_parameters = OrderedDict({k: v for k, v in self.shape_parameters.items() if k not in ignore_parameters})
             if shape_parameters:
                 source_shape_parameters[sn] = shape_parameters
         return source_shape_parameters
