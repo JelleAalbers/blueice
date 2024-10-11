@@ -120,10 +120,10 @@ class LogLikelihoodBase:
                 self.source_apply_efficiency,
                 self.source_efficiency_names
                 ):
-            ignore_parameters = source.config['dont_hash_settings']
+            ignore_parameters = set(source.config['dont_hash_settings'])
             # The efficiecny parameter doesn't need to be hashed but it needs to be passed to the morpher
             if apply_eff:
-                ignore_parameters.pop(eff_name, None)
+                ignore_parameters.discard(eff_name)
             shape_parameters = OrderedDict({k: v for k, v in self.shape_parameters.items() if k not in ignore_parameters})
             if shape_parameters:
                 source_shape_parameters[sn] = shape_parameters
