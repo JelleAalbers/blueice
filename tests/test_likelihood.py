@@ -106,8 +106,6 @@ def test_source_wise_interpolation():
     ret_1 = lf(full_output=True, mu=1)
 
     config["source_wise_interpolation"] = True
-    # We need to specify all parameters used by each source
-    config["sources"][0]["parameters"] = ["mu", "sigma", "strlen_multiplier", "some_multiplier", "s0_rate_multiplier"]
     lf_source_wise = UnbinnedLogLikelihood(config)
     lf_source_wise.add_shape_parameter("mu", anchors={-2:-2, 0:0, 2:2})
     lf_source_wise.prepare()
