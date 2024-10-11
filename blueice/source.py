@@ -86,6 +86,8 @@ class Source(object):
         self.name = c['name']
         del c['name']
 
+        self.parameters = c.pop('parameters', None)
+
         # events_per_day and fraction_in_range may be modified / set properly for the first time later (see comments
         # in 'defaults' above)
         if hasattr(self, 'events_per_day'):

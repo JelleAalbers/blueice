@@ -112,9 +112,12 @@ class LogLikelihoodBase:
 
     @property
     def source_shape_parameters(self):
+        """Dict of sources with shape parameters. source name -> dict of shape parameters."""
         source_shape_parameters = OrderedDict()
-        for sn, source_config in zip(self.source_name_list, self.pdf_base_config["sources"]):
-            parameter_names = source_config["parameters"]
+        for sn, source in zip(self.source_name_list, self.base_model.sources):
+            parameter_names = source.parameters
+            if parameter_names is None:
+                raise ValueError("The `parameters` of each source need to be specified when using `source_wise_interpolation`.")
             shape_parameters = OrderedDict({k: v for k, v in self.shape_parameters.items() if k in parameter_names})
             if shape_parameters:
                 source_shape_parameters[sn] = shape_parameters
