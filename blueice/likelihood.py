@@ -528,27 +528,26 @@ class UnbinnedLogLikelihood(LogLikelihoodBase):
         LogLikelihoodBase.set_data(self, d)
         if len(self.shape_parameters):
             if self.source_wise_interpolation:
-                ps_interpolators = OrderedDict()
+                self.ps_interpolators = OrderedDict()
                 for sn, base_source in zip(self.source_name_list, self.base_model.sources):
                     if sn in self.source_morphers:
-                        ps_interpolators[sn] = self.source_morphers[sn].make_interpolator(
+                        self.ps_interpolators[sn] = self.source_morphers[sn].make_interpolator(
                             f=lambda s: s.pdf(*self.base_model.to_analysis_dimensions(d)),
                             extra_dims=[len(d)],
                             anchor_models=self.anchor_sources[sn])
                     else:
-                        ps_interpolators[sn] = base_source.pdf(*self.base_model.to_analysis_dimensions(d))
+                        self.ps_interpolators[sn] = base_source.pdf(*self.base_model.to_analysis_dimensions(d))
 
                 def ps_interpolator(*args):
                     # take zs, convert to values for each source's interpolator call the respective interpolator
-                    ps = []
-                    for sn in self.source_name_list:
+                    ps = np.zeros((len(self.source_name_list), len(d)))
+                    for i, (sn, ps_interpolator) in enumerate(self.ps_interpolators.items()):
                         if sn in self.source_shape_parameters:
-                            shape_indices = self._get_shape_indices(sn)
-                            these_args = [args[0][i] for i in shape_indices]
-                            ps.append(ps_interpolators[sn](np.asarray(these_args)))
+                            these_args = np.asarray([args[0][j] for j in self._get_shape_indices(sn)])
+                            ps[i] = ps_interpolator(these_args)
                         else:
-                            ps.append(ps_interpolators[sn])
-                    return np.array(ps)
+                            ps[i] = ps_interpolator
+                    return ps
                 self.ps_interpolator = ps_interpolator
             else:
                 self.ps_interpolator = self.morpher.make_interpolator(
