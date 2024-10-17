@@ -92,6 +92,35 @@ def test_shape_uncertainty():
     assert lf(strlen_multiplier=2) == -2 + np.log(2 * stats.norm.pdf(0)) + log_prior(2)
 
 
+def test_source_wise_interpolation():
+    data = np.zeros(5, dtype=[('x', float), ('source', int)])
+    data['x'] = np.linspace(0, 1, 5)
+
+    config = conf_for_test(events_per_day=1)
+
+    lf = UnbinnedLogLikelihood(config)
+    lf.add_shape_parameter("mu", anchors={-2:-2, 0:0, 2:2})
+    lf.prepare()
+    lf.set_data(data)
+    ret_0 = lf(full_output=True)
+    ret_1 = lf(full_output=True, mu=1)
+
+    config["source_wise_interpolation"] = True
+    lf_source_wise = UnbinnedLogLikelihood(config)
+    lf_source_wise.add_shape_parameter("mu", anchors={-2:-2, 0:0, 2:2})
+    lf_source_wise.prepare()
+    lf_source_wise.set_data(data)
+    ret_source_wise_0 = lf_source_wise(full_output=True)
+    ret_source_wise_1 = lf_source_wise(full_output=True, mu=1)
+
+    assert ret_0[0] == ret_source_wise_0[0]
+    assert (ret_0[1] == ret_source_wise_0[1]).all()
+    assert (ret_0[2] == ret_source_wise_0[2]).all()
+    assert ret_1[0] == ret_source_wise_1[0]
+    assert (ret_1[1] == ret_source_wise_1[1]).all()
+    assert (ret_1[2] == ret_source_wise_1[2]).all()
+
+
 def test_multisource_likelihood():
     lf = UnbinnedLogLikelihood(conf_for_test(n_sources=2))
 

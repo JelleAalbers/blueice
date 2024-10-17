@@ -183,6 +183,11 @@ class Source(object):
         """
         raise NotImplementedError
 
+    @property
+    def expected_events(self):
+        """Return the default total number of events expected in the analysis range for the source."""
+        return self.events_per_day * self.config['livetime_days'] * self.fraction_in_range * self.config['rate_multiplier']
+
 
 class HistogramPdfSource(Source):
     """A source which takes its PDF values from a multihist histogram.
