@@ -152,11 +152,14 @@ class LogLikelihoodBase:
             if self.source_wise_interpolation:
                 # Create morphers for each source individually
                 self.source_morphers = OrderedDict()
-                for sn, shape_parameters in self.source_shape_parameters.items():
-                    self.source_morphers[sn] = MORPHERS[self.config['morpher']](
+
+                def create_source_morpher(shape_parameters):
+                    return MORPHERS[self.config['morpher']](
                         self.config.get('morpher_config', {}),
-                        shape_parameters
-                    )
+                        shape_parameters)
+
+                for sn, shape_parameters in self.source_shape_parameters.items():
+                    self.source_morphers[sn] = create_source_morpher(shape_parameters)
                 zs_list = set()
                 for source_name, morpher in self.source_morphers.items():
                     anchor_points = morpher.get_anchor_points(bounds=None)
