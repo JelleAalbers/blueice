@@ -5,9 +5,11 @@ def test_rates():
     m = Model(conf_for_test(n_sources=1))
     np.testing.assert_array_equal(m.expected_events(), np.array([1000]))
 
-    m.config['livetime_days'] = 2
+    for source in m.sources:
+        source.config['livetime_days'] = 2
     np.testing.assert_array_equal(m.expected_events(), np.array([2000]))
-    m.config['livetime_days'] = 1
+    for source in m.sources:
+        source.config['livetime_days'] = 1
 
     m.sources[0].fraction_in_range = 0.5
     np.testing.assert_array_equal(m.expected_events(), np.array([500]))

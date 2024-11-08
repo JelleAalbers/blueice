@@ -106,11 +106,10 @@ class Model(object):
     def expected_events(self, s=None):
         """Return the total number of events expected in the analysis range for the source s.
         If no source specified, return an array of results for all sources.
-        # TODO: Why is this not a method of source?
         """
         if s is None:
             return np.array([self.expected_events(s) for s in self.sources])
-        return s.events_per_day * self.config['livetime_days'] * s.fraction_in_range * s.config['rate_multiplier']
+        return s.expected_events
 
     def show(self, d, ax=None, dims=None, **kwargs):
         """Plot the events from dataset d in the analysis range
