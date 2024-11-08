@@ -588,16 +588,16 @@ class BinnedLogLikelihood(LogLikelihoodBase):
         if len(self.shape_parameters):
             if self.source_wise_interpolation:
                 raise NotImplementedError("Source-wise interpolation not implemented for binned likelihoods")
-            else:
-                self.ps_interpolator = self.morpher.make_interpolator(
-                    f=lambda m: m.pmf_grids()[0],
-                    extra_dims=list(self.ps.shape),
-                    anchor_models=self.anchor_models)
 
-                if self.model_statistical_uncertainty_handling is not None:
-                    self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
-                                                                                    extra_dims=list(self.ps.shape),
-                                                                                    anchor_models=self.anchor_models)
+            self.ps_interpolator = self.morpher.make_interpolator(
+                f=lambda m: m.pmf_grids()[0],
+                extra_dims=list(self.ps.shape),
+                anchor_models=self.anchor_models)
+
+            if self.model_statistical_uncertainty_handling is not None:
+                self.n_model_events_interpolator = self.morpher.make_interpolator(f=lambda m: m.pmf_grids()[1],
+                                                                                extra_dims=list(self.ps.shape),
+                                                                                anchor_models=self.anchor_models)
 
     @inherit_docstring_from(LogLikelihoodBase)
     def set_data(self, d):
