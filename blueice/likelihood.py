@@ -208,13 +208,14 @@ class LogLikelihoodBase:
                 models = [Model(c) for c in tqdm(configs, desc="Loading computed models")]
 
             if self.source_wise_interpolation:
-                for i, (source_name, morpher) in enumerate(self.source_morphers.items()):
+                for source_name, morpher in self.source_morphers.items():
                     anchors = morpher.get_anchor_points(bounds=None)
                     self.anchor_sources[source_name] = OrderedDict()
                     for anchor in anchors:
                         model_anchor = self._get_model_anchor(anchor, source_name)
                         model_index = zs_list.index(model_anchor)
-                        self.anchor_sources[source_name][anchor] = models[model_index].sources[i]
+                        source_index = self.source_name_list.index(source_name)
+                        self.anchor_sources[source_name][anchor] = models[model_index].sources[source_index]
                 mus_interpolators = OrderedDict()
                 for sn, base_source in zip(self.source_name_list, self.base_model.sources):
                     if sn in self.source_morphers:
