@@ -1,4 +1,10 @@
 ------------------
+1.2.1 (2024/12/11)
+------------------
+* Source-wise interpolation by @hammannr in https://github.com/JelleAalbers/blueice/pull/46
+* Fix source index mismatch by @hammannr in https://github.com/JelleAalbers/blueice/pull/47
+
+------------------
 1.2.0 (2024/01/13)
 ------------------
 * Prevent negative rates being passed to Barlow-Beeston equation, and allow per-event weights (#32)
