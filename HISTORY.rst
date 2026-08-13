@@ -1,4 +1,10 @@
 ------------------
+1.2.2 (2026/8/13)
+------------------
+* Cubic PChip interpolation by @Ananthu-Ravindran (#49)
+* Brentq argument passing fix (#50)
+
+------------------
 1.2.1 (2024/12/11)
 ------------------
 * Source-wise interpolation by @hammannr in https://github.com/JelleAalbers/blueice/pull/46
