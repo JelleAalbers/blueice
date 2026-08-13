@@ -380,13 +380,13 @@ def one_parameter_interval(lf, target, bound,
         return result - critical_value
 
     if kind == 'central':
-        a = brentq(t, bound[0], global_best, args=[(1-confidence_level)/2])
-        b = brentq(t, global_best, bound[1], args=[1 - (1 - confidence_level) / 2])
+        a = brentq(t, bound[0], global_best, args=((1-confidence_level)/2,))
+        b = brentq(t, global_best, bound[1], args=(1 - (1 - confidence_level) / 2,))
         return a, b
     elif kind == 'lower':
-        return brentq(t, bound, global_best, args=[1 - confidence_level])
+        return brentq(t, bound, global_best, args=(1 - confidence_level,))
     elif kind == 'upper':
-        return brentq(t, global_best, bound, args=[confidence_level])
+        return brentq(t, global_best, bound, args=(confidence_level,))
 
 
 def plot_likelihood_ratio(lf, *space, vmax=15,
