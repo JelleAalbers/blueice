@@ -8,8 +8,7 @@ from tqdm import tqdm
 from .exceptions import NoShapeParameters
 from .utils import arrays_to_grid, inherit_docstring_from, combine_dicts
 
-__all__ = ['Morpher', 'GridInterpolator', 'RadialInterpolator',
-           'latin', 'MORPHERS']
+__all__ = ['Morpher', 'GridInterpolator', 'RadialInterpolator', 'latin']
 
 
 class Morpher(object):
@@ -191,6 +190,3 @@ def latin(n, d, box=None, shuffle_steps=500):
         pts[:, i] = box[i][0] + pts[:, i] * (box[i][1] - box[i][0])
 
     return pts
-
-
-MORPHERS = {x.__name__: x for x in [GridInterpolator, RadialInterpolator]}

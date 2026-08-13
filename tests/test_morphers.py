@@ -3,14 +3,14 @@ from collections import OrderedDict
 import blueice.exceptions
 import pytest
 import numpy as np
-from blueice import pdf_morphers
+from blueice import likelihood
 
 
 def test_morpher_api():
     conf = dict(hypercube_shuffle_steps=2,
                 r_sample_points=2)
 
-    for name, morph_class in pdf_morphers.MORPHERS.items():
+    for name, morph_class in likelihood.MORPHERS.items():
         print("Testing %s" % name)
 
         with pytest.raises(blueice.exceptions.NoShapeParameters):

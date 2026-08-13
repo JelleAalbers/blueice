@@ -15,9 +15,12 @@ from tqdm import tqdm
 from .exceptions import NotPreparedException, InvalidParameterSpecification, InvalidParameter
 from .model import Model
 from .parallel import create_models_ipyparallel, compute_many
-from .pdf_morphers import MORPHERS
 from .utils import combine_dicts, inherit_docstring_from
 from . import inference
+
+from .pdf_morphers import GridInterpolator, RadialInterpolator
+from .pdf_morphers_cubic import CubicSplineInterpolator
+MORPHERS = {x.__name__: x for x in [GridInterpolator, RadialInterpolator, CubicSplineInterpolator]}
 
 __all__ = ['LogLikelihoodBase', 'BinnedLogLikelihood', 'UnbinnedLogLikelihood', 'LogLikelihoodSum',
            'LogLikelihoodReParam']
